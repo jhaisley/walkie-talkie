@@ -639,6 +639,16 @@ return `<!DOCTYPE html>
       if (typeof updateSendTo === "function") updateSendTo();
     }
 
+    function refreshChannels() {
+      fetch("/channels").then(r => r.json()).then(data => {
+        channels.clear();
+        for (const ch of data.channels) {
+          channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy });
+        }
+        renderChannels();
+      }).catch(() => {});
+    }
+
     function renderChannels() {
       channelListEl.innerHTML = "";
       for (const [name, info] of channels) {
@@ -823,6 +833,7 @@ return `<!DOCTYPE html>
       if (ev.type === "join") {
         users.add(ev.name);
         renderUsers();
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           '<strong>' + ev.name + '</strong> joined the channel',
@@ -832,6 +843,7 @@ return `<!DOCTYPE html>
       } else if (ev.type === "leave") {
         users.delete(ev.name);
         renderUsers();
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           '<strong>' + ev.name + '</strong> left the channel',
@@ -851,8 +863,7 @@ return `<!DOCTYPE html>
           ev.channel || "#all"
         );
       } else if (ev.type === "channel_create") {
-        channels.set(ev.name, { memberCount: 0, createdBy: "" });
-        renderChannels();
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           'Channel <strong>' + ev.name + '</strong> created',
@@ -860,9 +871,7 @@ return `<!DOCTYPE html>
           null
         );
       } else if (ev.type === "channel_join") {
-        const ch = channels.get(ev.channel);
-        if (ch) { ch.memberCount = (ch.memberCount || 0) + 1; }
-        renderChannels();
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           '<strong>' + ev.userName + '</strong> joined <strong>' + ev.channel + '</strong>',
@@ -870,9 +879,7 @@ return `<!DOCTYPE html>
           ev.channel
         );
       } else if (ev.type === "channel_leave") {
-        const ch = channels.get(ev.channel);
-        if (ch && ch.memberCount > 0) { ch.memberCount--; }
-        renderChannels();
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           '<strong>' + ev.userName + '</strong> left <strong>' + ev.channel + '</strong>',
@@ -880,9 +887,8 @@ return `<!DOCTYPE html>
           ev.channel
         );
       } else if (ev.type === "channel_delete") {
-        channels.delete(ev.name);
-        if (selectedChannel === ev.name) selectChannel(null);
-        else renderChannels();
+        if (selectedChannel === ev.name) selectedChannel = "#all";
+        refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           'Channel <strong>' + ev.name + '</strong> deleted',
