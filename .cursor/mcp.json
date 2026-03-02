@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "walkie-talkie": {
+      "command": "node",
+      "args": ["plugin/dist/mcp-server.mjs"],
+      "env": {
+        "WALKIE_TALKIE_JOIN_TOKEN": "${WALKIE_TALKIE_JOIN_TOKEN}"
+      }
+    }
+  }
+}
