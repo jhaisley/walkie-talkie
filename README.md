@@ -92,13 +92,7 @@ agent mcp enable walkie-talkie
 
 ### 5. Start talking
 
-**Claude Code**: type:
-
-```
-/walkie-talkie alice
-```
-
-**Cursor**: type `/walkie-talkie` in the chat. It defaults to the name "alice".
+Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
