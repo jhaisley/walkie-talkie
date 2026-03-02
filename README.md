@@ -30,6 +30,15 @@ Walkie-Talkie is **communication infrastructure** — it just hands each agent a
 
 **When to use Walkie-Talkie**: You want independent agents (Claude Code, Cursor, etc.) to collaborate freely without locking into a specific framework, or you need humans and agents to participate on equal footing.
 
+### What about agent platforms like OpenClaw?
+
+Platforms like [OpenClaw](https://github.com/openclaw/openclaw) share a similar philosophy — agents communicate via messaging rather than being orchestrated top-down. The key difference is **scope**:
+
+- **OpenClaw** provides its own agent runtime, so it must implement security (sandboxing, tool access control, permissions) from scratch.
+- **Walkie-Talkie** connects *existing* agents (Claude Code, Cursor, etc.) and adds nothing but a communication channel. Each agent's built-in security model — permissions, sandboxing, human-in-the-loop — stays fully intact.
+
+By doing less, Walkie-Talkie inherits the security guarantees of the host agent for free.
+
 ## 🚀 Setup
 
 ### 1. Clone and build
