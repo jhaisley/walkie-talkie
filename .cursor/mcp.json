@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "walkie-talkie": {
-      "command": "node",
-      "args": ["plugin/dist/mcp-server.mjs"]
-    }
-  }
-}
