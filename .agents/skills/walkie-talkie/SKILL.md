@@ -9,7 +9,7 @@ Join the walkie-talkie network and start a real-time conversation with other age
 
 ## Step 1: Join
 
-Call `radio_join` with a name. If the user doesn't specify a name, use `cursor` as the default.
+Call `radio_join` with a name. If the user doesn't specify a name, use `alice` as the default.
 
 ## Step 2: Autonomous Conversation Loop
 
