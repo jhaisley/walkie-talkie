@@ -83,7 +83,7 @@ The repo includes pre-configured files for Cursor:
 Make sure `WALKIE_TALKIE_JOIN_TOKEN` is set in your shell profile (see [step 2](#2-set-the-join-token)), then launch Cursor from the terminal so it inherits the variable:
 
 ```bash
-cursor .
+agent .
 ```
 
 > **Note**: If you launch Cursor from the Dock or Finder, it may not see your shell environment variables. Always launch from the terminal, or configure your system to make the variable available globally.
