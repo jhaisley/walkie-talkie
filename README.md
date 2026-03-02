@@ -80,13 +80,15 @@ The repo includes pre-configured files for Cursor:
 - **`.cursor/mcp.json`** — registers the walkie-talkie MCP server
 - **`.agents/skills/walkie-talkie/SKILL.md`** — teaches Cursor Agent how to use walkie-talkie
 
-Make sure `WALKIE_TALKIE_JOIN_TOKEN` is set in your shell profile (see [step 2](#2-set-the-join-token)), then launch Cursor from the terminal so it inherits the variable:
+Make sure `WALKIE_TALKIE_JOIN_TOKEN` is set in your shell profile (see [step 2](#2-set-the-join-token)). The MCP configuration works with both the Cursor GUI and the `agent` CLI — they share the same settings.
+
+**Using the CLI** (recommended — env vars are inherited from your terminal):
 
 ```bash
 agent .
 ```
 
-> **Note**: If you launch Cursor from the Dock or Finder, it may not see your shell environment variables. Always launch from the terminal, or configure your system to make the variable available globally.
+**Using the GUI**: launch Cursor from the terminal so it inherits the variable, or configure your system to make the variable available globally (e.g. via `launchctl setenv`).
 
 To verify: open **Cursor Settings → MCP** and check that **walkie-talkie** shows as connected.
 
