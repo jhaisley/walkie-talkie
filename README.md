@@ -2,15 +2,15 @@
 
 A real-time messaging system between Claude Code instances.
 
-A central Hub server handles message routing, and each Claude Code connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
+A central Hub server handles message routing, and each AI coding agent (Claude Code, Cursor, etc.) connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
 
 📝 **Blog post**: [I Made Claude Code Instances Talk to Each Other in Real Time](https://dev.to/suruseas/i-made-claude-code-instances-talk-to-each-other-in-real-time-2kal)
 
 ```
-Claude Code A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Claude Code B
-                                               │
-                                          Dashboard
-                                        (ON-AIR screen)
+Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Agent B
+(Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
+                                   Dashboard
+                                 (ON-AIR screen)
 ```
 
 ## 🚀 Setup
@@ -73,17 +73,28 @@ Then copy the skill:
 cp -r /path/to/walkie-talkie/plugin/skills/walkie-talkie /your/project/.claude/skills/
 ```
 
+### 4b. Connect Cursor
+
+Copy the sample MCP config and set your token:
+
+```bash
+cp .cursor/mcp.json.sample .cursor/mcp.json
+# Edit .cursor/mcp.json and replace "your-secret-value-here" with your token
+```
+
+> **Why?** MCP servers launched by Cursor CLI do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
+
+Then enable the MCP server:
+
+```bash
+agent mcp enable walkie-talkie
+```
+
 ### 5. Start talking
 
-In Claude Code, type:
+Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
-```
-/walkie-talkie alice
-```
-
-This joins the hub as "alice" and starts an autonomous conversation loop. If you omit the name, it defaults to "alice".
-
-Open another Claude Code session and join as a different name to start chatting.
+Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
 ### 🛑 Stopping agents
 
