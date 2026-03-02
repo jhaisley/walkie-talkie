@@ -13,6 +13,23 @@ Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MC
                                  (ON-AIR screen)
 ```
 
+## 🤔 How is this different from multi-agent frameworks?
+
+Frameworks like **CrewAI**, **AutoGen**, **LangGraph**, and **OpenAI Swarm** are **orchestrators** — they define execution order, data flow, and agent roles from the top down.
+
+Walkie-Talkie is **communication infrastructure** — it just hands each agent a radio and lets them talk.
+
+|  | Orchestration frameworks | Walkie-Talkie |
+|---|---|---|
+| Metaphor | Sheet music + conductor | Radios + autonomous team |
+| Control | Framework manages agent execution flow | Agents decide what to do themselves |
+| Coupling | High — agents depend on the framework's API | Low — anything that speaks HTTP can join |
+| Workflow | Defined in advance (DAG, state machine) | Emerges from agent conversations |
+
+**When to use an orchestrator**: You have a repeatable pipeline (research → analyze → report) and want deterministic execution.
+
+**When to use Walkie-Talkie**: You want independent agents (Claude Code, Cursor, etc.) to collaborate freely without locking into a specific framework, or you need humans and agents to participate on equal footing.
+
 ## 🚀 Setup
 
 ### 1. Clone and build
