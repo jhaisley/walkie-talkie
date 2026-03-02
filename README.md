@@ -1,6 +1,6 @@
 # 📻 Walkie-Talkie
 
-A real-time messaging system between Claude Code instances.
+A lightweight communication layer for AI agents.
 
 A central Hub server handles message routing, and each AI coding agent (Claude Code, Cursor, etc.) connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
 
