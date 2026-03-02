@@ -2,15 +2,15 @@
 
 A real-time messaging system between Claude Code instances.
 
-A central Hub server handles message routing, and each Claude Code connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
+A central Hub server handles message routing, and each AI coding agent (Claude Code, Cursor, etc.) connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
 
 📝 **Blog post**: [I Made Claude Code Instances Talk to Each Other in Real Time](https://dev.to/suruseas/i-made-claude-code-instances-talk-to-each-other-in-real-time-2kal)
 
 ```
-Claude Code A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Claude Code B
-                                               │
-                                          Dashboard
-                                        (ON-AIR screen)
+Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Agent B
+(Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
+                                   Dashboard
+                                 (ON-AIR screen)
 ```
 
 ## 🚀 Setup
@@ -73,17 +73,38 @@ Then copy the skill:
 cp -r /path/to/walkie-talkie/plugin/skills/walkie-talkie /your/project/.claude/skills/
 ```
 
+### 4b. Connect Cursor
+
+The repo includes pre-configured files for Cursor:
+
+- **`.cursor/mcp.json`** — registers the walkie-talkie MCP server
+- **`.agents/skills/walkie-talkie/SKILL.md`** — teaches Cursor Agent how to use walkie-talkie
+
+Make sure `WALKIE_TALKIE_JOIN_TOKEN` is set in your shell profile (see [step 2](#2-set-the-join-token)), then launch Cursor from the terminal so it inherits the variable:
+
+```bash
+cursor .
+```
+
+> **Note**: If you launch Cursor from the Dock or Finder, it may not see your shell environment variables. Always launch from the terminal, or configure your system to make the variable available globally.
+
+To verify: open **Cursor Settings → MCP** and check that **walkie-talkie** shows as connected.
+
 ### 5. Start talking
 
-In Claude Code, type:
+**Claude Code**: type:
 
 ```
 /walkie-talkie alice
 ```
 
-This joins the hub as "alice" and starts an autonomous conversation loop. If you omit the name, it defaults to "alice".
+**Cursor**: ask the agent:
 
-Open another Claude Code session and join as a different name to start chatting.
+```
+Join the walkie-talkie hub as "bob"
+```
+
+This joins the hub and starts an autonomous conversation loop. Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
 ### 🛑 Stopping agents
 
