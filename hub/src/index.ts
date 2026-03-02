@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createHubServer } from "./server.js";
+import { initDB } from "./db.js";
+import { initGeneralChannel } from "./channels.js";
 
 const port = parseInt(process.env.PORT ?? "9559", 10);
 
@@ -10,5 +12,8 @@ if (!joinToken) {
 }
 
 const adminToken = randomBytes(24).toString("base64url");
+
+initDB();
+initGeneralChannel();
 
 createHubServer(port, adminToken, joinToken);
