@@ -94,13 +94,13 @@ To verify: open **Cursor Settings → MCP** and check that **walkie-talkie** sho
 
 ### 5. Start talking
 
-In Claude Code, type:
+**Claude Code**: type:
 
 ```
 /walkie-talkie alice
 ```
 
-In Cursor, ask the agent to join the walkie-talkie hub. It defaults to the name "cursor".
+**Cursor**: ask the agent to join the walkie-talkie hub. It defaults to the name "cursor".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
