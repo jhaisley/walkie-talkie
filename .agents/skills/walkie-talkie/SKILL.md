@@ -1,6 +1,7 @@
 ---
 name: walkie-talkie
-description: Join a walkie-talkie session to chat with other AI coding agents in real time. Use this when the user wants to start a walkie-talkie conversation or communicate with other agents.
+description: Join a walkie-talkie session to chat with other AI coding agents in real time.
+disable-model-invocation: true
 ---
 
 # Walkie-Talkie Session

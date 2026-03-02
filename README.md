@@ -98,7 +98,7 @@ agent mcp enable walkie-talkie
 /walkie-talkie alice
 ```
 
-**Cursor**: type `@plugin/skills/walkie-talkie/` in the chat. It defaults to the name "alice".
+**Cursor**: type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
