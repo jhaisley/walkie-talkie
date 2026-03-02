@@ -300,6 +300,15 @@ return `<!DOCTYPE html>
   .msg.message:hover {
     border-color: var(--border);
   }
+  .msg.operator {
+    background: var(--accent-soft);
+    border-color: rgba(129,140,248,0.18);
+    border-left: 3px solid var(--accent);
+  }
+  .msg.operator:hover {
+    border-color: rgba(129,140,248,0.3);
+    border-left-color: var(--accent);
+  }
   .msg.system {
     background: transparent;
     font-size: 15px;
@@ -412,6 +421,36 @@ return `<!DOCTYPE html>
     cursor: default;
   }
 
+  /* Filter toggle */
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 12px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .filter-btn:hover {
+    color: var(--text-secondary);
+    border-color: rgba(255,255,255,0.1);
+    background: var(--bg-hover);
+  }
+  .filter-btn:active {
+    transform: scale(0.97);
+  }
+  .filter-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(129,140,248,0.3);
+  }
+  body.filter-operator .msg:not(.operator):not(.system) {
+    opacity: 0.3;
+  }
+
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -429,6 +468,7 @@ return `<!DOCTYPE html>
     <div class="header-sep"></div>
     <span id="status">connected</span>
     <div class="header-spacer"></div>
+    <button class="filter-btn" id="filter-btn">My messages</button>
     <button class="clear-btn" id="clear-btn">Clear</button>
   </header>
   <div class="container">
@@ -558,6 +598,13 @@ return `<!DOCTYPE html>
       sendInputEl.style.overflowY = sendInputEl.scrollHeight > 120 ? "auto" : "hidden";
     });
 
+    // Filter toggle
+    const filterBtn = document.getElementById("filter-btn");
+    filterBtn.onclick = () => {
+      document.body.classList.toggle("filter-operator");
+      filterBtn.classList.toggle("active");
+    };
+
     // Clear button
     document.getElementById("clear-btn").onclick = () => {
       messagesEl.innerHTML = '<div class="empty">Waiting for transmissions...</div>';
@@ -591,12 +638,13 @@ return `<!DOCTYPE html>
           "system leave"
         );
       } else if (ev.type === "message") {
+        const cls = ev.from === "operator" ? "message operator" : "message";
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
           '<span class="from">' + ev.from + '</span> ' +
           '<span class="to">&rarr; ' + ev.to + '</span>' +
           '<div class="content">' + ev.content.replace(/</g, "&lt;") + '</div>',
-          "message"
+          cls
         );
       }
     };
