@@ -598,7 +598,7 @@ return `<!DOCTYPE html>
     const users = new Set();
     const channels = new Map(); // name -> { memberCount, createdBy }
 
-    let selectedChannel = null; // null = show all
+    let selectedChannel = "#all";
 
     function formatTime(ts) {
       return new Date(ts).toLocaleTimeString();
@@ -641,13 +641,6 @@ return `<!DOCTYPE html>
 
     function renderChannels() {
       channelListEl.innerHTML = "";
-      // "All" option
-      const allLi = document.createElement("li");
-      allLi.innerHTML = '<span class="channel-name">All</span>';
-      if (selectedChannel === null) allLi.className = "active";
-      allLi.onclick = () => selectChannel(null);
-      channelListEl.appendChild(allLi);
-
       for (const [name, info] of channels) {
         const li = document.createElement("li");
         const badge = '<span class="channel-badge">' + (info.memberCount || 0) + '</span>';
