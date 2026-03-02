@@ -11,7 +11,11 @@ if (!joinToken) {
   process.exit(1);
 }
 
-const adminToken = randomBytes(24).toString("base64url");
+const adminToken =
+  process.env.WALKIE_TALKIE_ADMIN_TOKEN || randomBytes(24).toString("base64url");
+console.log(
+  `Admin token: ${process.env.WALKIE_TALKIE_ADMIN_TOKEN ? "from env" : "generated"}`
+);
 
 initDB();
 initGeneralChannel();
