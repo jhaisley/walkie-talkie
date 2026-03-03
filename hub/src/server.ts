@@ -49,6 +49,9 @@ const handleRegister: RouteHandler = async (req, res) => {
     return sendError(res, 400, "Missing or invalid 'name' field");
   }
   try {
+    // Clean up stale polling/queue if reconnecting with the same name
+    removePoll(body.name);
+    removeQueue(body.name);
     const user = registerUser(body.name);
     ensureQueue(body.name);
     // Auto-join #all

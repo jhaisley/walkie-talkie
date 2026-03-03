@@ -7,8 +7,9 @@ const users = new Map<string, User>();
 const tokenToName = new Map<string, string>();
 
 export function registerUser(name: string): User {
+  // Allow reconnection: clean up stale registration if the name is already taken
   if (users.has(name)) {
-    throw new Error(`User "${name}" is already registered`);
+    unregisterUser(name);
   }
   const token = randomBytes(32).toString("hex");
   const user: User = { name, token, registeredAt: Date.now() };
