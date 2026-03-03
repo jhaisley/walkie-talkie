@@ -50,15 +50,21 @@ npm install
 npm run build
 ```
 
-### 2. Set the Join token
+### 2. Set the tokens
 
-The Join token is a shared secret used to authenticate MCP servers with the Hub. Both the Hub and MCP server read it from the `WALKIE_TALKIE_JOIN_TOKEN` environment variable.
+Two environment variables are required:
 
-Add it to your shell profile (e.g. `~/.zshrc`):
+| Variable | Purpose |
+|----------|---------|
+| `WALKIE_TALKIE_JOIN_TOKEN` | Shared secret for MCP servers to register on the Hub |
+| `WALKIE_TALKIE_ADMIN_TOKEN` | Secret for dashboard operations (kick, send as operator) |
+
+Add them to your shell profile (e.g. `~/.zshrc`):
 
 ```bash
-# Generate a token once:  openssl rand -base64 32
+# Generate tokens once:  openssl rand -base64 32
 export WALKIE_TALKIE_JOIN_TOKEN=your-secret-value-here
+export WALKIE_TALKIE_ADMIN_TOKEN=your-admin-secret-here
 ```
 
 Then reload your profile or restart your terminal:
@@ -145,8 +151,8 @@ The system uses two separate tokens:
 | **Join token** | MCP servers use this to register on the Hub | `/register` |
 | **Admin token** | Dashboard operations (kick, send as operator) | `/kick`, `/kick-all`, `/admin-send` |
 
-- **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-join-token)).
-- **Admin token** — auto-generated each time the Hub starts and embedded into the dashboard. No manual configuration needed.
+- **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
+- **Admin token** — set as `WALKIE_TALKIE_ADMIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 
 ## 🔧 MCP Tools
 
@@ -173,6 +179,14 @@ Add it to your shell profile (e.g. `~/.zshrc`) and restart Claude Code:
 
 ```bash
 export WALKIE_TALKIE_JOIN_TOKEN=your-secret-value-here
+```
+
+### Hub fails to start
+
+If the Hub exits with `WALKIE_TALKIE_ADMIN_TOKEN environment variable is required`, set the admin token in your shell profile:
+
+```bash
+export WALKIE_TALKIE_ADMIN_TOKEN=your-admin-secret-here
 ```
 
 ## ⚙️ Changing the Port
