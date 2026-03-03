@@ -30147,12 +30147,14 @@ var HubClient = class {
       req.end();
     });
   }
-  async register(name, joinToken3) {
+  async register(name, joinToken3, oldToken) {
+    const body = { name };
+    if (oldToken) body.oldToken = oldToken;
     const res = await this.request({
       method: "POST",
       path: "/register",
       token: joinToken3,
-      body: { name }
+      body
     });
     if (res.status !== 200) {
       throw new Error(res.data.error ?? "Registration failed");
@@ -30280,18 +30282,8 @@ function createMcpServer(hubUrl2, joinTok) {
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
     { name: external_exports.string().describe("Your display name for this session") },
     async ({ name }) => {
-      if (currentToken) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Already registered as "${currentName}". Unregister first to change name.`
-            }
-          ]
-        };
-      }
       try {
-        const result = await client.register(name, joinToken);
+        const result = await client.register(name, joinToken, currentToken ?? void 0);
         currentToken = result.token;
         currentName = result.name;
         return {
