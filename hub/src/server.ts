@@ -459,6 +459,11 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
         sendError(res, 401, "Unauthorized");
         return;
       }
+      // Any authenticated request proves the agent is alive
+      if (!isOnline(userName)) {
+        setOnline(userName);
+        broadcast({ type: "status", name: userName, online: true, timestamp: Date.now() });
+      }
       protectedRoute.handler(req, res, userName).catch((e) => {
         sendError(res, 500, (e as Error).message);
       });
