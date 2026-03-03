@@ -553,6 +553,19 @@ return `<!DOCTYPE html>
     margin-left: 6px;
     animation: typingBlink 1.2s ease-in-out infinite;
   }
+  #typing-bar {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    padding: 0 24px;
+    height: 0;
+    overflow: hidden;
+    transition: height 0.2s ease, padding 0.2s ease;
+  }
+  #typing-bar.active {
+    height: 28px;
+    padding: 6px 24px;
+  }
   @keyframes typingBlink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
@@ -591,6 +604,7 @@ return `<!DOCTYPE html>
       <div id="messages">
         <div class="empty">Waiting for transmissions...</div>
       </div>
+      <div id="typing-bar"></div>
       <div class="input-bar">
         <select id="send-channel">
           <option value="#all">#all</option>
@@ -637,6 +651,18 @@ return `<!DOCTYPE html>
         headers: adminHeaders,
         body: JSON.stringify({ name }),
       });
+    }
+
+    const typingBarEl = document.getElementById("typing-bar");
+    function renderTypingBar() {
+      const names = [...typingUsers.keys()];
+      if (names.length === 0) {
+        typingBarEl.className = "";
+        typingBarEl.textContent = "";
+      } else {
+        typingBarEl.className = "active";
+        typingBarEl.textContent = names.join(", ") + (names.length === 1 ? " is thinking..." : " are thinking...");
+      }
     }
 
     function renderUsers() {
@@ -902,7 +928,7 @@ return `<!DOCTYPE html>
         clearPendingReply(ev.from);
         if (users.has(ev.from)) users.set(ev.from, true);
         const existingTimer = typingUsers.get(ev.from);
-        if (existingTimer) { clearTimeout(existingTimer); typingUsers.delete(ev.from); renderUsers(); }
+        if (existingTimer) { clearTimeout(existingTimer); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
         const cls = ev.from === "operator" ? "message operator" : "message";
         const channelTag = '<span class="channel-tag">' + (ev.channel || "#all") + '</span>';
         addMessage(
@@ -952,8 +978,9 @@ return `<!DOCTYPE html>
         if (users.has(ev.name)) users.set(ev.name, true);
         const prev = typingUsers.get(ev.name);
         if (prev) clearTimeout(prev);
-        typingUsers.set(ev.name, setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); }, 60000));
+        typingUsers.set(ev.name, setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); renderTypingBar(); }, 60000));
         renderUsers();
+        renderTypingBar();
       }
     };
 

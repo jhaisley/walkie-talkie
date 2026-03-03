@@ -90,7 +90,7 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   if (body.content === "TYPING") {
     broadcast({ type: "typing", name: userName!, timestamp: Date.now() });
     console.log(`[typing] ${userName}`);
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, 200, { id: "typing", to: body.to });
   }
   const channel = body.channel || "#all";
   try {

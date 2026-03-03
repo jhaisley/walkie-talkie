@@ -90,6 +90,12 @@ The Hub starts on `http://localhost:9559`. Open this URL in your browser to see 
 /plugin install walkie-talkie@suruseas
 ```
 
+To install from a specific branch (e.g. `develop`):
+
+```
+/plugin marketplace add suruseas/walkie-talkie#develop
+```
+
 Restart Claude Code after installing to activate the plugin.
 
 **Manual**:
