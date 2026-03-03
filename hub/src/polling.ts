@@ -1,4 +1,4 @@
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { PendingPoll } from "./types.js";
 import { drainQueue } from "./router.js";
 
@@ -27,7 +27,7 @@ export function setOffline(userName: string): void {
   offlineUsers.add(userName);
 }
 
-export function addPoll(userName: string, res: ServerResponse): void {
+export function addPoll(userName: string, req: IncomingMessage, res: ServerResponse): void {
   removePoll(userName);
 
   const timer = setTimeout(() => {
@@ -38,8 +38,9 @@ export function addPoll(userName: string, res: ServerResponse): void {
 
   pendingPolls.set(userName, { userName, res, timer });
 
-  // Detect unexpected connection drop (agent crash, network loss)
-  res.on("close", () => {
+  // Detect unexpected connection drop (agent crash, network loss).
+  // Listen on req (not res) — more reliable when no response has been written yet.
+  req.on("close", () => {
     if (!res.writableEnded && pendingPolls.has(userName)) {
       clearTimeout(timer);
       pendingPolls.delete(userName);

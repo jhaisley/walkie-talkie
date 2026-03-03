@@ -97,9 +97,9 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   }
 };
 
-const handlePoll: RouteHandler = async (_req, res, userName) => {
+const handlePoll: RouteHandler = async (req, res, userName) => {
   const wasOffline = !isOnline(userName!);
-  addPoll(userName!, res);
+  addPoll(userName!, req, res);
   if (wasOffline) {
     setOnline(userName!);
     broadcast({ type: "status", name: userName!, online: true, timestamp: Date.now() });
