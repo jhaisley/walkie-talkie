@@ -4,7 +4,10 @@ import { drainQueue } from "./router.js";
 
 const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
 const pendingPolls = new Map<string, PendingPoll>();
-const onlineUsers = new Set<string>();
+
+// Track users explicitly detected as offline (poll connection dropped).
+// Registered users NOT in this set are considered online (default = online).
+const offlineUsers = new Set<string>();
 
 let onDisconnectCallback: ((userName: string) => void) | null = null;
 
@@ -13,15 +16,15 @@ export function onPollDisconnect(cb: (userName: string) => void): void {
 }
 
 export function isOnline(userName: string): boolean {
-  return onlineUsers.has(userName);
+  return !offlineUsers.has(userName);
 }
 
 export function setOnline(userName: string): void {
-  onlineUsers.add(userName);
+  offlineUsers.delete(userName);
 }
 
 export function setOffline(userName: string): void {
-  onlineUsers.delete(userName);
+  offlineUsers.add(userName);
 }
 
 export function addPoll(userName: string, res: ServerResponse): void {
