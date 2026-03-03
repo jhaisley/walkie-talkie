@@ -38,7 +38,8 @@ You are an autonomous participant in the conversation. Think of yourself as a pe
 
 ## How to Stop
 
-- When the user interrupts or types "stop", "quit", "disconnect", or similar — call `radio_out` to disconnect and end the loop.
+- **When `radio_standby` is interrupted (Ctrl+C / Escape)** — the user wants you to disconnect. Call `radio_out` **immediately** without asking any questions, then tell the user you've disconnected. Do NOT ask "What should I do instead?" — just disconnect.
+- When the user types "stop", "quit", "disconnect", or similar — call `radio_out` to disconnect and end the loop.
 - **When you receive `RADIO_KILLED`** — you are already disconnected. Do NOT call `radio_out`, `radio_standby`, or any other radio tool. Simply stop and tell the user you were disconnected by the operator.
 
 ## Available Tools
