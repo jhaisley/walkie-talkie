@@ -21,18 +21,8 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
     { name: z.string().describe("Your display name for this session") },
     async ({ name }) => {
-      if (currentToken) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Already registered as "${currentName}". Unregister first to change name.`,
-            },
-          ],
-        };
-      }
       try {
-        const result = await client.register(name, joinToken);
+        const result = await client.register(name, joinToken, currentToken ?? undefined);
         currentToken = result.token;
         currentName = result.name;
         return {

@@ -5,6 +5,7 @@ import {
   unregisterUser,
   authenticateRequest,
   getRegisteredUsers,
+  getUserToken,
   isUserRegistered,
 } from "./auth.js";
 import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./router.js";
@@ -49,6 +50,16 @@ const handleRegister: RouteHandler = async (req, res) => {
     return sendError(res, 400, "Missing or invalid 'name' field");
   }
   try {
+    // Allow reconnection only if the caller proves ownership with the old token
+    if (isUserRegistered(body.name)) {
+      const existingToken = getUserToken(body.name);
+      if (!body.oldToken || body.oldToken !== existingToken) {
+        return sendError(res, 409, `User "${body.name}" is already registered`);
+      }
+      removePoll(body.name);
+      removeQueue(body.name);
+      unregisterUser(body.name);
+    }
     const user = registerUser(body.name);
     ensureQueue(body.name);
     // Auto-join #all

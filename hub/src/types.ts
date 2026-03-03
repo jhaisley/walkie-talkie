@@ -17,6 +17,7 @@ export interface User {
 
 export interface RegisterRequest {
   name: string;
+  oldToken?: string;
 }
 
 export interface RegisterResponse {
