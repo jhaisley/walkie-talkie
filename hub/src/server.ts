@@ -9,7 +9,7 @@ import {
   isUserRegistered,
 } from "./auth.js";
 import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./router.js";
-import { addPoll, removePoll, hasPoll, onPollDisconnect } from "./polling.js";
+import { addPoll, removePoll, isOnline, setOnline, setOffline, onPollDisconnect } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
 import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels } from "./db.js";
@@ -68,6 +68,7 @@ const handleRegister: RouteHandler = async (req, res) => {
     }
     const user = registerUser(body.name);
     ensureQueue(body.name);
+    setOnline(body.name);
     // Auto-join #all
     try {
       joinChannel("#all", body.name);
@@ -97,9 +98,10 @@ const handleSend: RouteHandler = async (req, res, userName) => {
 };
 
 const handlePoll: RouteHandler = async (_req, res, userName) => {
-  const wasOffline = !hasPoll(userName!);
+  const wasOffline = !isOnline(userName!);
   addPoll(userName!, res);
   if (wasOffline) {
+    setOnline(userName!);
     broadcast({ type: "status", name: userName!, online: true, timestamp: Date.now() });
   }
 };
@@ -107,7 +109,7 @@ const handlePoll: RouteHandler = async (_req, res, userName) => {
 const handleUsers: RouteHandler = async (_req, res) => {
   const users = getRegisteredUsers().map((name) => ({
     name,
-    online: hasPoll(name),
+    online: isOnline(name),
   }));
   sendJson(res, 200, { users });
 };
@@ -362,6 +364,7 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
   // When a poll connection drops unexpectedly, mark user offline and start grace timer
   onPollDisconnect((userName) => {
     if (!isUserRegistered(userName)) return;
+    setOffline(userName);
     broadcast({ type: "status", name: userName, online: false, timestamp: Date.now() });
     console.log(`[offline] ${userName} (grace period ${STALE_GRACE_MS / 1000}s)`);
 
@@ -371,9 +374,10 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
 
     staleTimers.set(userName, setTimeout(() => {
       staleTimers.delete(userName);
-      if (isUserRegistered(userName) && !hasPoll(userName)) {
+      if (isUserRegistered(userName) && !isOnline(userName)) {
         removePoll(userName);
         removeQueue(userName);
+        setOffline(userName);
         unregisterUser(userName);
         broadcast({ type: "leave", name: userName, timestamp: Date.now() });
         console.log(`[auto-unregister] ${userName} (stale)`);

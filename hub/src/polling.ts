@@ -4,6 +4,7 @@ import { drainQueue } from "./router.js";
 
 const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
 const pendingPolls = new Map<string, PendingPoll>();
+const onlineUsers = new Set<string>();
 
 let onDisconnectCallback: ((userName: string) => void) | null = null;
 
@@ -11,8 +12,16 @@ export function onPollDisconnect(cb: (userName: string) => void): void {
   onDisconnectCallback = cb;
 }
 
-export function hasPoll(userName: string): boolean {
-  return pendingPolls.has(userName);
+export function isOnline(userName: string): boolean {
+  return onlineUsers.has(userName);
+}
+
+export function setOnline(userName: string): void {
+  onlineUsers.add(userName);
+}
+
+export function setOffline(userName: string): void {
+  onlineUsers.delete(userName);
 }
 
 export function addPoll(userName: string, res: ServerResponse): void {
