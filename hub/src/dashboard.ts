@@ -546,6 +546,18 @@ return `<!DOCTYPE html>
     display: none;
   }
 
+  .typing-indicator {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    margin-left: 6px;
+    animation: typingBlink 1.2s ease-in-out infinite;
+  }
+  @keyframes typingBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -601,6 +613,8 @@ return `<!DOCTYPE html>
     const channelHeaderEl = document.getElementById("channel-header");
     const users = new Map(); // name -> online (boolean)
     const channels = new Map(); // name -> { memberCount, createdBy }
+    const typingUsers = new Map(); // name -> timeoutId
+    const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
 
     let selectedChannel = "#all";
 
@@ -632,7 +646,8 @@ return `<!DOCTYPE html>
         const info = document.createElement("span");
         info.className = "user-info";
         const dotCls = online ? "user-dot" : "user-dot offline";
-        info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>';
+        const typingHtml = typingUsers.has(u) ? '<span class="typing-indicator">typing...</span>' : '';
+        info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>' + typingHtml;
         const btn = document.createElement("button");
         btn.className = "kick-btn";
         btn.textContent = "kick";
@@ -754,18 +769,40 @@ return `<!DOCTYPE html>
       }
     }
 
+    function expectReply(name) {
+      const prev = pendingReply.get(name);
+      if (prev) clearTimeout(prev);
+      pendingReply.set(name, setTimeout(() => {
+        pendingReply.delete(name);
+        if (users.has(name)) { users.set(name, false); renderUsers(); }
+      }, 30000));
+    }
+
+    function clearPendingReply(name) {
+      const timer = pendingReply.get(name);
+      if (timer) { clearTimeout(timer); pendingReply.delete(name); }
+    }
+
     function sendMessage() {
       const content = sendInputEl.value.trim();
       if (!content) return;
       const channel = sendChannelEl.value || "#all";
+      const target = sendToEl.value;
       fetch("/admin-send", {
         method: "POST",
         headers: adminHeaders,
-        body: JSON.stringify({ to: sendToEl.value, content, channel }),
+        body: JSON.stringify({ to: target, content, channel }),
       }).then(() => {
         sendInputEl.value = "";
         sendInputEl.style.height = "auto";
         sendInputEl.focus();
+        // Start 30s reply expectation timer
+        const targetName = target.startsWith("@") ? target.slice(1) : target;
+        if (targetName === "all") {
+          for (const [u] of users) { if (u !== "operator") expectReply(u); }
+        } else {
+          expectReply(targetName);
+        }
       });
     }
 
@@ -861,6 +898,11 @@ return `<!DOCTYPE html>
           null
         );
       } else if (ev.type === "message") {
+        // Clear typing and pending-reply state when user sends a real message
+        clearPendingReply(ev.from);
+        if (users.has(ev.from)) users.set(ev.from, true);
+        const existingTimer = typingUsers.get(ev.from);
+        if (existingTimer) { clearTimeout(existingTimer); typingUsers.delete(ev.from); renderUsers(); }
         const cls = ev.from === "operator" ? "message operator" : "message";
         const channelTag = '<span class="channel-tag">' + (ev.channel || "#all") + '</span>';
         addMessage(
@@ -905,6 +947,13 @@ return `<!DOCTYPE html>
           "system channel-event leave",
           null
         );
+      } else if (ev.type === "typing") {
+        clearPendingReply(ev.name);
+        if (users.has(ev.name)) users.set(ev.name, true);
+        const prev = typingUsers.get(ev.name);
+        if (prev) clearTimeout(prev);
+        typingUsers.set(ev.name, setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); }, 60000));
+        renderUsers();
       }
     };
 
