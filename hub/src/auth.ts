@@ -6,10 +6,13 @@ import { removeUserFromAllChannels } from "./channels.js";
 const users = new Map<string, User>();
 const tokenToName = new Map<string, string>();
 
+export function getUserToken(name: string): string | null {
+  return users.get(name)?.token ?? null;
+}
+
 export function registerUser(name: string): User {
-  // Allow reconnection: clean up stale registration if the name is already taken
   if (users.has(name)) {
-    unregisterUser(name);
+    throw new Error(`User "${name}" is already registered`);
   }
   const token = randomBytes(32).toString("hex");
   const user: User = { name, token, registeredAt: Date.now() };

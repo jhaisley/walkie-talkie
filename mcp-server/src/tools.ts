@@ -22,7 +22,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     { name: z.string().describe("Your display name for this session") },
     async ({ name }) => {
       try {
-        const result = await client.register(name, joinToken);
+        const result = await client.register(name, joinToken, currentToken ?? undefined);
         currentToken = result.token;
         currentName = result.name;
         return {

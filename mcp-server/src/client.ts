@@ -77,12 +77,14 @@ export class HubClient {
     });
   }
 
-  async register(name: string, joinToken: string): Promise<{ token: string; name: string }> {
+  async register(name: string, joinToken: string, oldToken?: string): Promise<{ token: string; name: string }> {
+    const body: { name: string; oldToken?: string } = { name };
+    if (oldToken) body.oldToken = oldToken;
     const res = await this.request<{ token: string; name: string }>({
       method: "POST",
       path: "/register",
       token: joinToken,
-      body: { name },
+      body,
     });
     if (res.status !== 200) {
       throw new Error((res.data as { error?: string }).error ?? "Registration failed");
