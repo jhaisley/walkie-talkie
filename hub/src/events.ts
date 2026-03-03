@@ -8,7 +8,8 @@ export type HubEvent =
   | { type: "channel_join"; channel: string; userName: string; timestamp: number }
   | { type: "channel_leave"; channel: string; userName: string; timestamp: number }
   | { type: "channel_delete"; name: string; timestamp: number }
-  | { type: "status"; name: string; online: boolean; timestamp: number };
+  | { type: "status"; name: string; online: boolean; timestamp: number }
+  | { type: "typing"; name: string; timestamp: number };
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 

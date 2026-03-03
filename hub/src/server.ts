@@ -86,6 +86,12 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   if (!body.to || !body.content) {
     return sendError(res, 400, "Missing 'to' or 'content' field");
   }
+  // Typing indicator: broadcast typing event without routing to chat log
+  if (body.content === "TYPING") {
+    broadcast({ type: "typing", name: userName!, timestamp: Date.now() });
+    console.log(`[typing] ${userName}`);
+    return sendJson(res, 200, { ok: true });
+  }
   const channel = body.channel || "#all";
   try {
     const message = routeMessage(userName!, body.to, body.content, channel);
