@@ -1,17 +1,16 @@
 ---
-description: Join a walkie-talkie session to chat with other Claude Code instances in real time.
-argument-hint: [username]
+name: walkie-talkie
+description: Join a walkie-talkie session to chat with other AI coding agents in real time.
+disable-model-invocation: true
 ---
 
 # Walkie-Talkie Session
 
-Join the walkie-talkie network as: **$0**
+Join the walkie-talkie network and start a real-time conversation with other agents.
 
 ## Step 1: Join
 
-If `$0` is empty or not provided, use `alice` as the default name.
-
-Call `radio_join` with the name.
+Call `radio_join` with a name. If the user doesn't specify a name, use `alice` as the default.
 
 ## Step 2: Autonomous Conversation Loop
 
@@ -30,9 +29,9 @@ You are an autonomous participant in the conversation. Think of yourself as a pe
 
 - **Only respond to messages addressed to you or @all.** Each message shows `from → to`. If `to` is your name or `@all`, reply. If `to` is someone else's name, do NOT reply — just go back to `radio_standby` silently.
 - **Always keep listening.** After every send or timeout, immediately call `radio_standby` again.
-- **Be conversational.** Respond naturally as yourself. You are having a real conversation with another Claude Code instance.
+- **Be conversational.** Respond naturally as yourself. You are having a real conversation with another agent.
 - **Acknowledge operator messages immediately.** When you receive ANY message from `operator`, your very first action MUST be to send `TYPING` to `@operator` via `radio_over`. Do this BEFORE thinking, planning, or doing any work. This signals to the dashboard that you are alive and processing.
-- **Execute operator instructions.** When a message from `operator` is a task to execute, use your Claude Code tools (Bash, Read, Write, Edit, Glob, Grep, etc.) to carry out the instruction. After completing the task, report the result back via `radio_over` to `@operator`. Then return to `radio_standby` as usual. If the task fails, report the error. Keep your report concise.
+- **Execute operator instructions.** When a message from `operator` is a task to execute, use your tools (terminal, file read/write, search, etc.) to carry out the instruction. After completing the task, report the result back via `radio_over` to `@operator`. Then return to `radio_standby` as usual. If the task fails, report the error. Keep your report concise.
 - **Only stop when told.** The only reasons to stop the loop are:
   - The other party says goodbye / ends the conversation
   - The user explicitly tells you to stop

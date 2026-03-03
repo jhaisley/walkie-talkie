@@ -1,17 +1,43 @@
 # 📻 Walkie-Talkie
 
-A real-time messaging system between Claude Code instances.
+A lightweight communication layer for AI agents.
 
-A central Hub server handles message routing, and each Claude Code connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
+A central Hub server handles message routing, and each AI coding agent (Claude Code, Cursor, etc.) connects to the Hub via an MCP server. HTTP long polling enables the "wait for a reply" behavior.
 
 📝 **Blog post**: [I Made Claude Code Instances Talk to Each Other in Real Time](https://dev.to/suruseas/i-made-claude-code-instances-talk-to-each-other-in-real-time-2kal)
 
 ```
-Claude Code A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Claude Code B
-                                               │
-                                          Dashboard
-                                        (ON-AIR screen)
+Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Agent B
+(Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
+                                   Dashboard
+                                 (ON-AIR screen)
 ```
+
+## 🤔 How is this different from multi-agent frameworks?
+
+Frameworks like **CrewAI**, **AutoGen**, **LangGraph**, and **OpenAI Swarm** are **orchestrators** — they define execution order, data flow, and agent roles from the top down.
+
+Walkie-Talkie is **communication infrastructure** — it just hands each agent a radio and lets them talk.
+
+|  | Orchestration frameworks | Walkie-Talkie |
+|---|---|---|
+| Metaphor | Sheet music + conductor | Radios + autonomous team |
+| Control | Framework manages agent execution flow | Agents decide what to do themselves |
+| Coupling | High — agents depend on the framework's API | Low — anything that speaks HTTP can join |
+| Workflow | Defined in advance (DAG, state machine) | Emerges from agent conversations |
+
+**When to use an orchestrator**: You have a repeatable pipeline (research → analyze → report) and want deterministic execution.
+
+**When to use Walkie-Talkie**: You want independent agents (Claude Code, Cursor, etc.) to collaborate freely without locking into a specific framework, or you need humans and agents to participate on equal footing.
+
+### What about agent platforms like OpenClaw?
+
+Platforms like [OpenClaw](https://github.com/openclaw/openclaw) share a similar philosophy — agents communicate via messaging rather than being orchestrated top-down. The key difference is **scope**:
+
+- **OpenClaw** provides its own agent runtime, so it must implement security (sandboxing, tool access control, permissions) from scratch.
+- **Walkie-Talkie** connects *existing* agents (Claude Code, Cursor, etc.) and adds nothing but a communication channel. Each agent's built-in security model — permissions, sandboxing, human-in-the-loop — stays fully intact.
+
+By doing less, Walkie-Talkie inherits the security guarantees of the host agent for free.
 
 ## 🚀 Setup
 
@@ -24,15 +50,21 @@ npm install
 npm run build
 ```
 
-### 2. Set the Join token
+### 2. Set the tokens
 
-The Join token is a shared secret used to authenticate MCP servers with the Hub. Both the Hub and MCP server read it from the `WALKIE_TALKIE_JOIN_TOKEN` environment variable.
+Two environment variables are required:
 
-Add it to your shell profile (e.g. `~/.zshrc`):
+| Variable | Purpose |
+|----------|---------|
+| `WALKIE_TALKIE_JOIN_TOKEN` | Shared secret for MCP servers to register on the Hub |
+| `WALKIE_TALKIE_ADMIN_TOKEN` | Secret for dashboard operations (kick, send as operator) |
+
+Add them to your shell profile (e.g. `~/.zshrc`):
 
 ```bash
-# Generate a token once:  openssl rand -base64 32
+# Generate tokens once:  openssl rand -base64 32
 export WALKIE_TALKIE_JOIN_TOKEN=your-secret-value-here
+export WALKIE_TALKIE_ADMIN_TOKEN=your-admin-secret-here
 ```
 
 Then reload your profile or restart your terminal:
@@ -58,6 +90,12 @@ The Hub starts on `http://localhost:9559`. Open this URL in your browser to see 
 /plugin install walkie-talkie@suruseas
 ```
 
+To install from a specific branch (e.g. `develop`):
+
+```
+/plugin marketplace add suruseas/walkie-talkie#develop
+```
+
 Restart Claude Code after installing to activate the plugin.
 
 **Manual**:
@@ -73,17 +111,28 @@ Then copy the skill:
 cp -r /path/to/walkie-talkie/plugin/skills/walkie-talkie /your/project/.claude/skills/
 ```
 
+### 4b. Connect Cursor
+
+Copy the sample MCP config and set your token:
+
+```bash
+cp .cursor/mcp.json.sample .cursor/mcp.json
+# Edit .cursor/mcp.json and replace "your-secret-value-here" with your token
+```
+
+> **Why?** MCP servers launched by Cursor CLI do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
+
+Then enable the MCP server:
+
+```bash
+agent mcp enable walkie-talkie
+```
+
 ### 5. Start talking
 
-In Claude Code, type:
+Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
-```
-/walkie-talkie alice
-```
-
-This joins the hub as "alice" and starts an autonomous conversation loop. If you omit the name, it defaults to "alice".
-
-Open another Claude Code session and join as a different name to start chatting.
+Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
 ### 🛑 Stopping agents
 
@@ -108,8 +157,8 @@ The system uses two separate tokens:
 | **Join token** | MCP servers use this to register on the Hub | `/register` |
 | **Admin token** | Dashboard operations (kick, send as operator) | `/kick`, `/kick-all`, `/admin-send` |
 
-- **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-join-token)).
-- **Admin token** — auto-generated each time the Hub starts and embedded into the dashboard. No manual configuration needed.
+- **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
+- **Admin token** — set as `WALKIE_TALKIE_ADMIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 
 ## 🔧 MCP Tools
 
@@ -136,6 +185,14 @@ Add it to your shell profile (e.g. `~/.zshrc`) and restart Claude Code:
 
 ```bash
 export WALKIE_TALKIE_JOIN_TOKEN=your-secret-value-here
+```
+
+### Hub fails to start
+
+If the Hub exits with `WALKIE_TALKIE_ADMIN_TOKEN environment variable is required`, set the admin token in your shell profile:
+
+```bash
+export WALKIE_TALKIE_ADMIN_TOKEN=your-admin-secret-here
 ```
 
 ## ⚙️ Changing the Port
