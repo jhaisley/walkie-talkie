@@ -5,6 +5,16 @@ import { drainQueue } from "./router.js";
 const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
 const pendingPolls = new Map<string, PendingPoll>();
 
+let onDisconnectCallback: ((userName: string) => void) | null = null;
+
+export function onPollDisconnect(cb: (userName: string) => void): void {
+  onDisconnectCallback = cb;
+}
+
+export function hasPoll(userName: string): boolean {
+  return pendingPolls.has(userName);
+}
+
 export function addPoll(userName: string, res: ServerResponse): void {
   removePoll(userName);
 
@@ -15,6 +25,15 @@ export function addPoll(userName: string, res: ServerResponse): void {
   }, POLL_TIMEOUT_MS);
 
   pendingPolls.set(userName, { userName, res, timer });
+
+  // Detect unexpected connection drop (agent crash, network loss)
+  res.on("close", () => {
+    if (!res.writableEnded && pendingPolls.has(userName)) {
+      clearTimeout(timer);
+      pendingPolls.delete(userName);
+      onDisconnectCallback?.(userName);
+    }
+  });
 
   // Check if there are already queued messages
   const messages = drainQueue(userName);

@@ -9,7 +9,7 @@ import {
   isUserRegistered,
 } from "./auth.js";
 import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./router.js";
-import { addPoll, removePoll } from "./polling.js";
+import { addPoll, removePoll, hasPoll, onPollDisconnect } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
 import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels } from "./db.js";
@@ -60,6 +60,12 @@ const handleRegister: RouteHandler = async (req, res) => {
       removeQueue(body.name);
       unregisterUser(body.name);
     }
+    // Cancel grace timer if reconnecting
+    const graceTimer = staleTimers.get(body.name);
+    if (graceTimer) {
+      clearTimeout(graceTimer);
+      staleTimers.delete(body.name);
+    }
     const user = registerUser(body.name);
     ensureQueue(body.name);
     // Auto-join #all
@@ -91,11 +97,19 @@ const handleSend: RouteHandler = async (req, res, userName) => {
 };
 
 const handlePoll: RouteHandler = async (_req, res, userName) => {
+  const wasOffline = !hasPoll(userName!);
   addPoll(userName!, res);
+  if (wasOffline) {
+    broadcast({ type: "status", name: userName!, online: true, timestamp: Date.now() });
+  }
 };
 
 const handleUsers: RouteHandler = async (_req, res) => {
-  sendJson(res, 200, { users: getRegisteredUsers() });
+  const users = getRegisteredUsers().map((name) => ({
+    name,
+    online: hasPoll(name),
+  }));
+  sendJson(res, 200, { users });
 };
 
 const handleUnregister: RouteHandler = async (_req, res, userName) => {
@@ -341,7 +355,32 @@ function authenticateBearer(req: IncomingMessage, expected: string): boolean {
   return scheme === "Bearer" && token === expected;
 }
 
+const STALE_GRACE_MS = 30_000; // 30 seconds before auto-unregister
+const staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function createHubServer(port: number, adminToken: string, joinToken: string): void {
+  // When a poll connection drops unexpectedly, mark user offline and start grace timer
+  onPollDisconnect((userName) => {
+    if (!isUserRegistered(userName)) return;
+    broadcast({ type: "status", name: userName, online: false, timestamp: Date.now() });
+    console.log(`[offline] ${userName} (grace period ${STALE_GRACE_MS / 1000}s)`);
+
+    // Clear any existing grace timer
+    const existing = staleTimers.get(userName);
+    if (existing) clearTimeout(existing);
+
+    staleTimers.set(userName, setTimeout(() => {
+      staleTimers.delete(userName);
+      if (isUserRegistered(userName) && !hasPoll(userName)) {
+        removePoll(userName);
+        removeQueue(userName);
+        unregisterUser(userName);
+        broadcast({ type: "leave", name: userName, timestamp: Date.now() });
+        console.log(`[auto-unregister] ${userName} (stale)`);
+      }
+    }, STALE_GRACE_MS));
+  });
+
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const path = url.pathname;

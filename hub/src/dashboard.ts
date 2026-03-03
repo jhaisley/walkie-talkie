@@ -303,6 +303,10 @@ return `<!DOCTYPE html>
     box-shadow: 0 0 8px rgba(52,211,153,0.35);
     flex-shrink: 0;
   }
+  .user-dot.offline {
+    background: #555;
+    box-shadow: none;
+  }
   .user-name {
     font-weight: 500;
     overflow: hidden;
@@ -595,7 +599,7 @@ return `<!DOCTYPE html>
     const channelListEl = document.getElementById("channel-list");
     const statusEl = document.getElementById("status");
     const channelHeaderEl = document.getElementById("channel-header");
-    const users = new Set();
+    const users = new Map(); // name -> online (boolean)
     const channels = new Map(); // name -> { memberCount, createdBy }
 
     let selectedChannel = "#all";
@@ -623,11 +627,12 @@ return `<!DOCTYPE html>
 
     function renderUsers() {
       userListEl.innerHTML = "";
-      for (const u of users) {
+      for (const [u, online] of users) {
         const li = document.createElement("li");
         const info = document.createElement("span");
         info.className = "user-info";
-        info.innerHTML = '<span class="user-dot"></span><span class="user-name">' + u + '</span>';
+        const dotCls = online ? "user-dot" : "user-dot offline";
+        info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>';
         const btn = document.createElement("button");
         btn.className = "kick-btn";
         btn.textContent = "kick";
@@ -721,7 +726,7 @@ return `<!DOCTYPE html>
     function updateSendTo() {
       const current = sendToEl.value;
       sendToEl.innerHTML = '<option value="@all">@all</option>';
-      for (const u of users) {
+      for (const [u] of users) {
         const opt = document.createElement("option");
         opt.value = "@" + u;
         opt.textContent = "@" + u;
@@ -814,7 +819,7 @@ return `<!DOCTYPE html>
 
     // Fetch initial data
     fetch("/users").then(r => r.json()).then(data => {
-      for (const u of data.users) users.add(u);
+      for (const u of data.users) users.set(u.name, u.online);
       renderUsers();
     }).catch(() => {});
 
@@ -830,8 +835,13 @@ return `<!DOCTYPE html>
     es.onmessage = (e) => {
       const ev = JSON.parse(e.data);
 
-      if (ev.type === "join") {
-        users.add(ev.name);
+      if (ev.type === "status") {
+        if (users.has(ev.name)) {
+          users.set(ev.name, ev.online);
+          renderUsers();
+        }
+      } else if (ev.type === "join") {
+        users.set(ev.name, true);
         renderUsers();
         refreshChannels();
         addMessage(
