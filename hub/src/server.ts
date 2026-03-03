@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   registerUser,
@@ -6,7 +7,7 @@ import {
   getRegisteredUsers,
   isUserRegistered,
 } from "./auth.js";
-import { routeMessage, ensureQueue, removeQueue } from "./router.js";
+import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./router.js";
 import { addPoll, removePoll } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
@@ -97,10 +98,16 @@ const handleUnregister: RouteHandler = async (_req, res, userName) => {
 
 function kickUser(name: string): boolean {
   if (!getRegisteredUsers().includes(name)) return false;
-  // Send a termination message before kicking, so the agent's pending poll receives it
-  try {
-    routeMessage("system", name, "RADIO_KILLED: You have been disconnected by the operator.", "#all");
-  } catch { /* ignore if routing fails */ }
+  // Send a termination message directly to the target user's queue only
+  ensureQueue(name);
+  enqueueAndDeliver(name, {
+    id: randomUUID(),
+    from: "system",
+    to: name,
+    content: "RADIO_KILLED: You have been disconnected by the operator.",
+    channel: "#all",
+    timestamp: Date.now(),
+  });
   removePoll(name);
   removeQueue(name);
   unregisterUser(name);
