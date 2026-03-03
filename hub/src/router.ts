@@ -79,7 +79,7 @@ export function routeMessage(
   return message;
 }
 
-function enqueueAndDeliver(targetName: string, message: Message): void {
+export function enqueueAndDeliver(targetName: string, message: Message): void {
   ensureQueue(targetName);
   const queue = messageQueues.get(targetName)!;
   queue.push(message);
