@@ -12,7 +12,7 @@ import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./rou
 import { addPoll, removePoll, isOnline, setOnline, setOffline, onPollDisconnect } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
-import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels } from "./db.js";
+import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels, dbDeleteChannelMessages, dbGetChannelMessages, dbGetRecentMessages } from "./db.js";
 import {
   joinChannel,
   leaveChannel,
@@ -20,6 +20,7 @@ import {
   getChannelMemberCounts,
   ensureChannelMembership,
   removeChannel,
+  isChannelMember,
 } from "./channels.js";
 import type {
   RegisterRequest,
@@ -303,6 +304,20 @@ const handleListChannels: RouteHandler = async (_req, res) => {
   sendJson(res, 200, { channels: result });
 };
 
+const handleChannelHistory: RouteHandler = async (req, res, userName) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const channel = url.searchParams.get("channel");
+  if (!channel) {
+    return sendError(res, 400, "Missing 'channel' query parameter");
+  }
+  if (!isChannelMember(channel, userName!)) {
+    return sendError(res, 403, `You are not a member of ${channel}`);
+  }
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1), 200);
+  const messages = dbGetChannelMessages(channel, limit);
+  sendJson(res, 200, { messages });
+};
+
 const handleAdminChannelCreate: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as { name?: string };
   if (!body.name || typeof body.name !== "string") {
@@ -323,6 +338,19 @@ const handleAdminChannelCreate: RouteHandler = async (req, res) => {
   }
 };
 
+const handleAdminChannelHistory: RouteHandler = async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const channel = url.searchParams.get("channel");
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "200", 10) || 200, 1), 500);
+  if (channel) {
+    const messages = dbGetChannelMessages(channel, limit);
+    sendJson(res, 200, { messages });
+  } else {
+    const messages = dbGetRecentMessages(limit);
+    sendJson(res, 200, { messages });
+  }
+};
+
 const handleAdminChannelDelete: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as { name?: string };
   if (!body.name || typeof body.name !== "string") {
@@ -335,6 +363,7 @@ const handleAdminChannelDelete: RouteHandler = async (req, res) => {
     return sendError(res, 404, `Channel "${body.name}" not found`);
   }
   dbDeleteChannel(body.name);
+  dbDeleteChannelMessages(body.name);
   removeChannel(body.name);
   broadcast({ type: "channel_delete", name: body.name, timestamp: Date.now() });
   console.log(`[admin-channel-delete] ${body.name}`);
@@ -356,6 +385,7 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/admin-send": { method: "POST", handler: handleAdminSend },
   "/admin-channel-create": { method: "POST", handler: handleAdminChannelCreate },
   "/admin-channel-delete": { method: "POST", handler: handleAdminChannelDelete },
+  "/admin-channel-history": { method: "GET", handler: handleAdminChannelHistory },
 };
 
 const protectedRoutes: Record<string, { method: string; handler: RouteHandler }> = {
@@ -366,6 +396,7 @@ const protectedRoutes: Record<string, { method: string; handler: RouteHandler }>
   "/channel-join": { method: "POST", handler: handleChannelJoin },
   "/channel-leave": { method: "POST", handler: handleChannelLeave },
   "/channel-invite": { method: "POST", handler: handleChannelInvite },
+  "/channel-history": { method: "GET", handler: handleChannelHistory },
 };
 
 function authenticateBearer(req: IncomingMessage, expected: string): boolean {
