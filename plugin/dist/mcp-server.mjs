@@ -30103,7 +30103,7 @@ var HubClient = class {
       const transport2 = isHttps ? https : http;
       const headers = {};
       if (options.token) {
-        headers["Authorization"] = `Bearer ${options.token}`;
+        headers.Authorization = `Bearer ${options.token}`;
       }
       let bodyStr;
       if (options.body !== void 0) {
@@ -30296,9 +30296,7 @@ function createMcpServer(hubUrl2, joinTok) {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Registration failed: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Registration failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30310,14 +30308,14 @@ function createMcpServer(hubUrl2, joinTok) {
     {
       to: external_exports.string().describe("Recipient: @name or @all"),
       message: external_exports.string().describe("Message content"),
-      channel: external_exports.string().optional().describe("Channel to send to (default: #all)")
+      channel: external_exports.string().optional().describe(
+        "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted."
+      )
     },
     async ({ to, message, channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30333,9 +30331,7 @@ function createMcpServer(hubUrl2, joinTok) {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Send failed: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Send failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30348,9 +30344,7 @@ function createMcpServer(hubUrl2, joinTok) {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30358,9 +30352,7 @@ function createMcpServer(hubUrl2, joinTok) {
         const result = await client.poll(currentToken);
         if (!result || result.messages.length === 0) {
           return {
-            content: [
-              { type: "text", text: "No new messages (poll timed out). Try again." }
-            ]
+            content: [{ type: "text", text: "No new messages (poll timed out). Try again." }]
           };
         }
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
@@ -30369,14 +30361,38 @@ function createMcpServer(hubUrl2, joinTok) {
           currentName = null;
           return {
             content: [
-              { type: "text", text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." }
+              {
+                type: "text",
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+              }
             ],
             isError: true
           };
         }
-        const formatted = result.messages.map((m) => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}`).join("\n");
+        const contentBlocks = [];
+        for (const m of result.messages) {
+          if (m.image) {
+            contentBlocks.push({
+              type: "image",
+              data: m.image.data,
+              mimeType: m.image.mimeType
+            });
+          }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text", text: line });
+        }
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))
+        ];
+        const hint = channels.length > 0 ? `
+
+IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}` : "";
+        if (hint) {
+          contentBlocks.push({ type: "text", text: hint });
+        }
         return {
-          content: [{ type: "text", text: formatted }]
+          content: contentBlocks
         };
       } catch (e) {
         const msg = e.message;
@@ -30385,15 +30401,16 @@ function createMcpServer(hubUrl2, joinTok) {
           currentName = null;
           return {
             content: [
-              { type: "text", text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." }
+              {
+                type: "text",
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+              }
             ],
             isError: true
           };
         }
         return {
-          content: [
-            { type: "text", text: `Poll failed: ${msg}` }
-          ],
+          content: [{ type: "text", text: `Poll failed: ${msg}` }],
           isError: true
         };
       }
@@ -30406,17 +30423,12 @@ function createMcpServer(hubUrl2, joinTok) {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
       try {
-        const [users, channels] = await Promise.all([
-          client.users(currentToken),
-          client.listChannels(currentToken)
-        ]);
+        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
         const userText = users.length > 0 ? `Connected users: ${users.join(", ")}` : "No users connected.";
         const channelText = channels.length > 0 ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}` : "No channels.";
         return {
@@ -30430,9 +30442,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30445,9 +30455,7 @@ ${channelText}`
     async ({ name }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30463,9 +30471,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to create channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to create channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30478,9 +30484,7 @@ ${channelText}`
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30496,9 +30500,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to join channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to join channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30511,9 +30513,7 @@ ${channelText}`
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30529,9 +30529,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to leave channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to leave channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30547,9 +30545,7 @@ ${channelText}`
     async ({ channel, user }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30565,46 +30561,33 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to invite: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to invite: ${e.message}` }],
           isError: true
         };
       }
     }
   );
-  server2.tool(
-    "radio_out",
-    "Sign off and disconnect from the Walkie-Talkie hub. Over and out.",
-    {},
-    async () => {
-      if (!currentToken) {
-        return {
-          content: [
-            { type: "text", text: "Not registered." }
-          ]
-        };
-      }
-      try {
-        await client.unregister(currentToken);
-        const name = currentName;
-        currentToken = null;
-        currentName = null;
-        return {
-          content: [
-            { type: "text", text: `Unregistered "${name}". Disconnected from hub.` }
-          ]
-        };
-      } catch (e) {
-        return {
-          content: [
-            { type: "text", text: `Unregister failed: ${e.message}` }
-          ],
-          isError: true
-        };
-      }
+  server2.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
+    if (!currentToken) {
+      return {
+        content: [{ type: "text", text: "Not registered." }]
+      };
     }
-  );
+    try {
+      await client.unregister(currentToken);
+      const name = currentName;
+      currentToken = null;
+      currentName = null;
+      return {
+        content: [{ type: "text", text: `Unregistered "${name}". Disconnected from hub.` }]
+      };
+    } catch (e) {
+      return {
+        content: [{ type: "text", text: `Unregister failed: ${e.message}` }],
+        isError: true
+      };
+    }
+  });
   return server2;
 }
 
