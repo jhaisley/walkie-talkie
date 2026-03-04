@@ -48,7 +48,12 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     {
       to: z.string().describe("Recipient: @name or @all"),
       message: z.string().describe("Message content"),
-      channel: z.string().optional().describe("Channel to send to (default: #all)"),
+      channel: z
+        .string()
+        .optional()
+        .describe(
+          "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted.",
+        ),
     },
     async ({ to, message, channel }) => {
       if (!currentToken) {
@@ -115,8 +120,17 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
               `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`,
           )
           .join("\n");
+
+        // Remind the agent to reply in the same channel the message was received on
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel)),
+        ];
+        const hint =
+          channels.length > 0
+            ? `\n\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
+            : "";
         return {
-          content: [{ type: "text" as const, text: formatted }],
+          content: [{ type: "text" as const, text: formatted + hint }],
         };
       } catch (e) {
         const msg = (e as Error).message;
