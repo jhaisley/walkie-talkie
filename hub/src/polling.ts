@@ -68,6 +68,12 @@ export function deliverMessage(userName: string): void {
   clearTimeout(poll.timer);
   pendingPolls.delete(userName);
 
+  for (const m of messages) {
+    if (m.image) {
+      console.log(`[poll-deliver] ${userName} <- image (${m.image.mimeType}, ${m.image.data.length} chars base64)`);
+    }
+  }
+
   poll.res.writeHead(200, { "Content-Type": "application/json" });
   poll.res.end(JSON.stringify({ messages }));
 }
