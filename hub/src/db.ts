@@ -1,5 +1,5 @@
-import Database from "better-sqlite3";
 import path from "node:path";
+import Database from "better-sqlite3";
 
 import type { Message } from "./types.js";
 
@@ -102,16 +102,23 @@ export function dbRemoveAllMembersOfChannel(channel: string): void {
 }
 
 export function dbGetUserChannels(userName: string): string[] {
-  const rows = db.prepare("SELECT channel FROM channel_members WHERE user_name = ?").all(userName) as { channel: string }[];
+  const rows = db.prepare("SELECT channel FROM channel_members WHERE user_name = ?").all(userName) as {
+    channel: string;
+  }[];
   return rows.map((r) => r.channel);
 }
 
 const ALL_CHANNEL_MAX = 200;
 
 export function dbSaveMessage(msg: Message): void {
-  db.prepare(
-    `INSERT INTO messages (id, "from", "to", content, channel, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(msg.id, msg.from, msg.to, msg.content, msg.channel, msg.timestamp);
+  db.prepare(`INSERT INTO messages (id, "from", "to", content, channel, timestamp) VALUES (?, ?, ?, ?, ?, ?)`).run(
+    msg.id,
+    msg.from,
+    msg.to,
+    msg.content,
+    msg.channel,
+    msg.timestamp,
+  );
 
   if (msg.channel === "#all") {
     dbPruneAllChannel();
@@ -119,15 +126,17 @@ export function dbSaveMessage(msg: Message): void {
 }
 
 export function dbGetChannelMessages(channel: string, limit = 50): Message[] {
-  return db.prepare(
-    `SELECT id, "from", "to", content, channel, timestamp FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?`,
-  ).all(channel, limit) as Message[];
+  return db
+    .prepare(
+      `SELECT id, "from", "to", content, channel, timestamp FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?`,
+    )
+    .all(channel, limit) as Message[];
 }
 
 export function dbGetRecentMessages(limit = 200): Message[] {
-  return db.prepare(
-    `SELECT id, "from", "to", content, channel, timestamp FROM messages ORDER BY timestamp ASC LIMIT ?`,
-  ).all(limit) as Message[];
+  return db
+    .prepare(`SELECT id, "from", "to", content, channel, timestamp FROM messages ORDER BY timestamp ASC LIMIT ?`)
+    .all(limit) as Message[];
 }
 
 export function dbDeleteChannelMessages(channel: string): void {
@@ -143,13 +152,15 @@ export function dbUpdateReadCursor(userName: string, channel: string, timestamp?
 }
 
 export function dbGetUnreadCounts(userName: string): Record<string, number> {
-  const rows = db.prepare(
-    `SELECT m.channel, COUNT(*) as cnt
+  const rows = db
+    .prepare(
+      `SELECT m.channel, COUNT(*) as cnt
      FROM messages m
      LEFT JOIN read_cursors rc ON rc.user_name = ? AND rc.channel = m.channel
      WHERE m.timestamp > COALESCE(rc.last_read_at, 0)
      GROUP BY m.channel`,
-  ).all(userName) as { channel: string; cnt: number }[];
+    )
+    .all(userName) as { channel: string; cnt: number }[];
   const result: Record<string, number> = {};
   for (const row of rows) {
     result[row.channel] = row.cnt;
@@ -162,7 +173,8 @@ export function dbDeleteReadCursorsForChannel(channel: string): void {
 }
 
 function dbPruneAllChannel(): void {
-  const count = (db.prepare("SELECT COUNT(*) as cnt FROM messages WHERE channel = '#all'").get() as { cnt: number }).cnt;
+  const count = (db.prepare("SELECT COUNT(*) as cnt FROM messages WHERE channel = '#all'").get() as { cnt: number })
+    .cnt;
   if (count > ALL_CHANNEL_MAX) {
     db.prepare(
       `DELETE FROM messages WHERE channel = '#all' AND id NOT IN (

@@ -60,8 +60,4 @@ export type PendingPoll = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-export type RouteHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
-  userName?: string,
-) => Promise<void>;
+export type RouteHandler = (req: IncomingMessage, res: ServerResponse, userName?: string) => Promise<void>;

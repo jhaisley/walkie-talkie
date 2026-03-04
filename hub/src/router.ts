@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { Message } from "./types.js";
 import { isUserRegistered } from "./auth.js";
-import { deliverMessage } from "./polling.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
 import { dbSaveMessage } from "./db.js";
+import { deliverMessage } from "./polling.js";
+import type { Message } from "./types.js";
 
 const messageQueues = new Map<string, Message[]>();
 
@@ -25,12 +25,7 @@ export function drainQueue(name: string): Message[] {
   return messages;
 }
 
-export function routeMessage(
-  from: string,
-  to: string,
-  content: string,
-  channel = "#all",
-): Message {
+export function routeMessage(from: string, to: string, content: string, channel = "#all"): Message {
   const members = getChannelMembers(channel);
 
   if (to === "@all") {

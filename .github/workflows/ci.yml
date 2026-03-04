@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   check:
@@ -16,4 +16,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx biome ci .
       - run: npm run build
+      - run: npm test
