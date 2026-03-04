@@ -638,6 +638,50 @@ export function getDashboardHTML(adminToken: string): string {
     height: 28px;
     padding: 6px 24px;
   }
+  #image-preview {
+    display: none;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  #image-preview.active {
+    display: flex;
+  }
+  #image-preview img {
+    max-width: 120px;
+    max-height: 80px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  #image-preview .remove-img {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  #image-preview .remove-img:hover {
+    border-color: var(--red-border);
+    color: var(--red);
+    background: var(--red-soft);
+  }
+  .msg-image img {
+    max-width: 300px;
+    max-height: 200px;
+    border-radius: 6px;
+    margin-top: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .msg-image img:hover {
+    border-color: rgba(255,255,255,0.15);
+  }
   @keyframes typingBlink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
@@ -677,6 +721,7 @@ export function getDashboardHTML(adminToken: string): string {
         <div class="empty">Waiting for transmissions...</div>
       </div>
       <div id="typing-bar"></div>
+      <div id="image-preview"></div>
       <div class="input-bar">
         <span class="input-tag channel" id="channel-tag">#all</span>
         <span class="input-tag recipient" id="recipient-tag">@all</span>
@@ -890,6 +935,45 @@ export function getDashboardHTML(adminToken: string): string {
     const recipientTagEl = document.getElementById("recipient-tag");
     const mentionPopupEl = document.getElementById("mention-popup");
     let recipientTarget = "@all";
+    let pendingImage = null; // { data, mimeType }
+    const imagePreviewEl = document.getElementById("image-preview");
+
+    function renderImagePreview() {
+      if (pendingImage) {
+        imagePreviewEl.innerHTML = '<img src="data:' + pendingImage.mimeType + ';base64,' + pendingImage.data + '">'
+          + '<button class="remove-img">Remove</button>';
+        imagePreviewEl.classList.add("active");
+        imagePreviewEl.querySelector(".remove-img").onclick = () => {
+          pendingImage = null;
+          renderImagePreview();
+        };
+      } else {
+        imagePreviewEl.innerHTML = "";
+        imagePreviewEl.classList.remove("active");
+      }
+    }
+
+    sendInputEl.addEventListener("paste", (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (!blob) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result;
+            const base64 = dataUrl.split(",")[1];
+            pendingImage = { data: base64, mimeType: item.type };
+            renderImagePreview();
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    });
+
     let mentionActive = false;
     let mentionIndex = 0;
     let mentionFiltered = [];
@@ -1007,18 +1091,27 @@ export function getDashboardHTML(adminToken: string): string {
       if (timer) { clearTimeout(timer); pendingReply.delete(name); }
     }
 
+    function renderImageTag(image) {
+      if (!image) return "";
+      return '<div class="msg-image"><img src="data:' + image.mimeType + ';base64,' + image.data + '" onclick="window.open(this.src)"></div>';
+    }
+
     function sendMessage() {
       const content = sendInputEl.value.trim();
-      if (!content) return;
+      if (!content && !pendingImage) return;
       const channel = selectedChannel;
       const target = recipientTarget;
+      const payload = { to: target, content, channel };
+      if (pendingImage) payload.image = pendingImage;
       fetch("/admin-send", {
         method: "POST",
         headers: adminHeaders,
-        body: JSON.stringify({ to: target, content, channel }),
+        body: JSON.stringify(payload),
       }).then(() => {
         sendInputEl.value = "";
         sendInputEl.style.height = "auto";
+        pendingImage = null;
+        renderImagePreview();
         sendInputEl.focus();
         // Start 30s reply expectation timer
         const targetName = target.startsWith("@") ? target.slice(1) : target;
@@ -1129,7 +1222,8 @@ export function getDashboardHTML(adminToken: string): string {
               channelTag +
               '<span class="from">' + msg.from + '</span> ' +
               '<span class="to">&rarr; ' + msg.to + '</span>' +
-              '<div class="content">' + msg.content.replace(/</g, "&lt;") + '</div>',
+              '<div class="content">' + msg.content.replace(/</g, "&lt;") + '</div>' +
+              renderImageTag(msg.image),
               cls,
               msg.channel || "#all"
             );
@@ -1182,7 +1276,8 @@ export function getDashboardHTML(adminToken: string): string {
           channelTag +
           '<span class="from">' + ev.from + '</span> ' +
           '<span class="to">&rarr; ' + ev.to + '</span>' +
-          '<div class="content">' + ev.content.replace(/</g, "&lt;") + '</div>',
+          '<div class="content">' + ev.content.replace(/</g, "&lt;") + '</div>' +
+          renderImageTag(ev.image),
           cls,
           ev.channel || "#all"
         );

@@ -116,10 +116,26 @@ export class HubClient {
   }
 
   async poll(token: string): Promise<{
-    messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }>;
+    messages: Array<{
+      id: string;
+      from: string;
+      to: string;
+      content: string;
+      channel: string;
+      timestamp: number;
+      image?: { data: string; mimeType: string };
+    }>;
   } | null> {
     const res = await this.request<{
-      messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }>;
+      messages: Array<{
+        id: string;
+        from: string;
+        to: string;
+        content: string;
+        channel: string;
+        timestamp: number;
+        image?: { data: string; mimeType: string };
+      }>;
     }>({
       method: "GET",
       path: "/poll",

@@ -114,12 +114,20 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
             isError: true,
           };
         }
-        const formatted = result.messages
-          .map(
-            (m) =>
-              `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`,
-          )
-          .join("\n");
+        const contentBlocks: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> =
+          [];
+
+        for (const m of result.messages) {
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`;
+          contentBlocks.push({ type: "text" as const, text: line });
+          if (m.image) {
+            contentBlocks.push({
+              type: "image" as const,
+              data: m.image.data,
+              mimeType: m.image.mimeType,
+            });
+          }
+        }
 
         // Remind the agent to reply in the same channel the message was received on
         const channels = [
@@ -129,8 +137,11 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           channels.length > 0
             ? `\n\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
             : "";
+        if (hint) {
+          contentBlocks.push({ type: "text" as const, text: hint });
+        }
         return {
-          content: [{ type: "text" as const, text: formatted + hint }],
+          content: contentBlocks,
         };
       } catch (e) {
         const msg = (e as Error).message;

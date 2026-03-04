@@ -1,7 +1,15 @@
 import type { ServerResponse } from "node:http";
 
 export type HubEvent =
-  | { type: "message"; from: string; to: string; content: string; channel: string; timestamp: number }
+  | {
+      type: "message";
+      from: string;
+      to: string;
+      content: string;
+      channel: string;
+      timestamp: number;
+      image?: { data: string; mimeType: string };
+    }
   | { type: "join"; name: string; timestamp: number }
   | { type: "leave"; name: string; timestamp: number }
   | { type: "channel_create"; name: string; timestamp: number }

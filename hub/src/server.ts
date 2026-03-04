@@ -203,11 +203,18 @@ const handleKickAll: RouteHandler = async (_req, res) => {
 };
 
 const handleAdminSend: RouteHandler = async (req, res) => {
-  const body = JSON.parse(await readBody(req)) as { from?: string; to?: string; content?: string; channel?: string };
+  const body = JSON.parse(await readBody(req)) as {
+    from?: string;
+    to?: string;
+    content?: string;
+    channel?: string;
+    image?: { data: string; mimeType: string };
+  };
   const from = body.from || "operator";
-  if (!body.to || !body.content) {
+  if (!body.to || (!body.content && !body.image)) {
     return sendError(res, 400, "Missing 'to' or 'content' field");
   }
+  const content = body.content || "";
   const channel = body.channel || "#all";
   // Auto-register the admin sender so agents can reply
   if (!isUserRegistered(from)) {
@@ -232,7 +239,7 @@ const handleAdminSend: RouteHandler = async (req, res) => {
     /* already joined or channel issue */
   }
   try {
-    const message = routeMessage(from, body.to, body.content, channel);
+    const message = routeMessage(from, body.to, content, channel, body.image);
     broadcast({
       type: "message",
       from: message.from,
@@ -240,8 +247,9 @@ const handleAdminSend: RouteHandler = async (req, res) => {
       content: message.content,
       channel: message.channel,
       timestamp: message.timestamp,
+      image: message.image,
     });
-    console.log(`[admin-send] ${from} -> ${body.to} (${channel}): ${body.content}`);
+    console.log(`[admin-send] ${from} -> ${body.to} (${channel}): ${content}${body.image ? " [+image]" : ""}`);
     sendJson(res, 200, { id: message.id, to: message.to });
   } catch (e) {
     sendError(res, 404, (e as Error).message);

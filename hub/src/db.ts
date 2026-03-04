@@ -1,7 +1,7 @@
 import path from "node:path";
 import Database from "better-sqlite3";
 
-import type { Message } from "./types.js";
+import type { Message, MessageImage } from "./types.js";
 
 export interface ChannelRow {
   name: string;
@@ -57,6 +57,12 @@ export function initDB(): void {
     )
   `);
 
+  try {
+    db.exec("ALTER TABLE messages ADD COLUMN image TEXT");
+  } catch {
+    /* column already exists */
+  }
+
   // Seed #all if it doesn't exist
   const existing = db.prepare("SELECT name FROM channels WHERE name = ?").get("#all");
   if (!existing) {
@@ -111,13 +117,16 @@ export function dbGetUserChannels(userName: string): string[] {
 const ALL_CHANNEL_MAX = 200;
 
 export function dbSaveMessage(msg: Message): void {
-  db.prepare(`INSERT INTO messages (id, "from", "to", content, channel, timestamp) VALUES (?, ?, ?, ?, ?, ?)`).run(
+  db.prepare(
+    `INSERT INTO messages (id, "from", "to", content, channel, timestamp, image) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
     msg.id,
     msg.from,
     msg.to,
     msg.content,
     msg.channel,
     msg.timestamp,
+    msg.image ? JSON.stringify(msg.image) : null,
   );
 
   if (msg.channel === "#all") {
@@ -125,18 +134,33 @@ export function dbSaveMessage(msg: Message): void {
   }
 }
 
+function parseMessageRow(row: Record<string, unknown>): Message {
+  const imageStr = row.image as string | null;
+  return {
+    id: row.id as string,
+    from: row.from as string,
+    to: row.to as string,
+    content: row.content as string,
+    channel: row.channel as string,
+    timestamp: row.timestamp as number,
+    image: imageStr ? (JSON.parse(imageStr) as MessageImage) : undefined,
+  };
+}
+
 export function dbGetChannelMessages(channel: string, limit = 50): Message[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT id, "from", "to", content, channel, timestamp FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?`,
+      `SELECT id, "from", "to", content, channel, timestamp, image FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?`,
     )
-    .all(channel, limit) as Message[];
+    .all(channel, limit) as Record<string, unknown>[];
+  return rows.map(parseMessageRow);
 }
 
 export function dbGetRecentMessages(limit = 200): Message[] {
-  return db
-    .prepare(`SELECT id, "from", "to", content, channel, timestamp FROM messages ORDER BY timestamp ASC LIMIT ?`)
-    .all(limit) as Message[];
+  const rows = db
+    .prepare(`SELECT id, "from", "to", content, channel, timestamp, image FROM messages ORDER BY timestamp ASC LIMIT ?`)
+    .all(limit) as Record<string, unknown>[];
+  return rows.map(parseMessageRow);
 }
 
 export function dbDeleteChannelMessages(channel: string): void {
