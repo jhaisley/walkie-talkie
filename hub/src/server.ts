@@ -107,7 +107,7 @@ const handleRegister: RouteHandler = async (req, res) => {
 
 const handleSend: RouteHandler = async (req, res, userName) => {
   const body = JSON.parse(await readBody(req)) as SendRequest;
-  if (!body.to || !body.content) {
+  if (!body.to || (!body.content && !body.image)) {
     return sendError(res, 400, "Missing 'to' or 'content' field");
   }
   // Typing indicator: broadcast typing event without routing to chat log
@@ -118,9 +118,10 @@ const handleSend: RouteHandler = async (req, res, userName) => {
     console.log(`[typing] ${userName}`);
     return sendJson(res, 200, { id: "typing", to: body.to });
   }
+  const content = body.content || "";
   const channel = body.channel || "#all";
   try {
-    const message = routeMessage(userName!, body.to, body.content, channel);
+    const message = routeMessage(userName!, body.to, content, channel, body.image);
     broadcast({
       type: "message",
       from: message.from,
@@ -128,8 +129,9 @@ const handleSend: RouteHandler = async (req, res, userName) => {
       content: message.content,
       channel: message.channel,
       timestamp: message.timestamp,
+      image: message.image,
     });
-    console.log(`[send] ${userName} -> ${body.to} (${channel}): ${body.content}`);
+    console.log(`[send] ${userName} -> ${body.to} (${channel}): ${content}${body.image ? " [+image]" : ""}`);
     sendJson(res, 200, { id: message.id, to: message.to });
   } catch (e) {
     sendError(res, 404, (e as Error).message);

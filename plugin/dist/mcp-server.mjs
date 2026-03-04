@@ -30168,9 +30168,13 @@ var HubClient = class {
       token
     });
   }
-  async send(token, to, content, channel) {
-    const body = { to, content };
+  async send(token, to, content, channel, image) {
+    const body = {
+      to,
+      content
+    };
     if (channel) body.channel = channel;
+    if (image) body.image = image;
     const res = await this.request({
       method: "POST",
       path: "/send",
@@ -30310,9 +30314,11 @@ function createMcpServer(hubUrl2, joinTok) {
       message: external_exports.string().describe("Message content"),
       channel: external_exports.string().optional().describe(
         "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted."
-      )
+      ),
+      image_data: external_exports.string().optional().describe("Base64-encoded image data. Must be provided together with image_mime_type."),
+      image_mime_type: external_exports.string().optional().describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data.")
     },
-    async ({ to, message, channel }) => {
+    async ({ to, message, channel, image_data, image_mime_type }) => {
       if (!currentToken) {
         return {
           content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
@@ -30320,7 +30326,8 @@ function createMcpServer(hubUrl2, joinTok) {
         };
       }
       try {
-        const result = await client.send(currentToken, to, message, channel);
+        const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : void 0;
+        const result = await client.send(currentToken, to, message, channel, image);
         return {
           content: [
             {
