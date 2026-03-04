@@ -118,8 +118,6 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           [];
 
         for (const m of result.messages) {
-          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`;
-          contentBlocks.push({ type: "text" as const, text: line });
           if (m.image) {
             contentBlocks.push({
               type: "image" as const,
@@ -127,6 +125,9 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
               mimeType: m.image.mimeType,
             });
           }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text" as const, text: line });
         }
 
         // Remind the agent to reply in the same channel the message was received on
