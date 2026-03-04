@@ -3,7 +3,7 @@ import { isUserRegistered } from "./auth.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
 import { dbSaveMessage } from "./db.js";
 import { deliverMessage } from "./polling.js";
-import type { Message } from "./types.js";
+import type { Message, MessageImage } from "./types.js";
 
 const messageQueues = new Map<string, Message[]>();
 
@@ -25,7 +25,13 @@ export function drainQueue(name: string): Message[] {
   return messages;
 }
 
-export function routeMessage(from: string, to: string, content: string, channel = "#all"): Message {
+export function routeMessage(
+  from: string,
+  to: string,
+  content: string,
+  channel = "#all",
+  image?: MessageImage,
+): Message {
   const members = getChannelMembers(channel);
 
   if (to === "@all") {
@@ -36,6 +42,7 @@ export function routeMessage(from: string, to: string, content: string, channel 
       content,
       channel,
       timestamp: Date.now(),
+      image,
     };
 
     dbSaveMessage(message);
@@ -66,6 +73,7 @@ export function routeMessage(from: string, to: string, content: string, channel 
     content,
     channel,
     timestamp: Date.now(),
+    image,
   };
 
   dbSaveMessage(message);
