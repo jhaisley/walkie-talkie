@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { PendingPoll } from "./types.js";
 import { drainQueue } from "./router.js";
+import type { PendingPoll } from "./types.js";
 
 const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
 const pendingPolls = new Map<string, PendingPoll>();
@@ -67,6 +67,12 @@ export function deliverMessage(userName: string): void {
 
   clearTimeout(poll.timer);
   pendingPolls.delete(userName);
+
+  for (const m of messages) {
+    if (m.image) {
+      console.log(`[poll-deliver] ${userName} <- image (${m.image.mimeType}, ${m.image.data.length} chars base64)`);
+    }
+  }
 
   poll.res.writeHead(200, { "Content-Type": "application/json" });
   poll.res.end(JSON.stringify({ messages }));

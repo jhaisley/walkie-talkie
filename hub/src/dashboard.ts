@@ -1,5 +1,5 @@
 export function getDashboardHTML(adminToken: string): string {
-return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -125,6 +125,15 @@ return `<!DOCTYPE html>
     font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .channel-members {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 400;
   }
   .clear-btn, .filter-btn {
     font-family: var(--mono);
@@ -234,17 +243,18 @@ return `<!DOCTYPE html>
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .channel-badge {
+  .channel-unread {
+    font-family: var(--mono);
     font-size: 10px;
-    background: var(--bg-surface);
-    color: var(--text-tertiary);
+    background: var(--accent);
+    color: #fff;
     padding: 1px 6px;
     border-radius: 100px;
     flex-shrink: 0;
+    font-weight: 600;
   }
-  #channel-list li.active .channel-badge {
-    background: rgba(129,140,248,0.2);
-    color: var(--accent);
+  #channel-list li.active .channel-unread {
+    display: none;
   }
   .channel-del {
     background: transparent;
@@ -479,22 +489,84 @@ return `<!DOCTYPE html>
     gap: 8px;
     flex-shrink: 0;
   }
-  .input-bar select {
+  .input-bar-wrapper {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .input-tag {
     font-family: var(--mono);
     font-size: 12px;
-    padding: 8px 10px;
-    background: var(--bg-surface);
-    color: var(--text-primary);
+    font-weight: 500;
+    padding: 6px 10px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 1px;
+    user-select: none;
+  }
+  .input-tag.channel {
+    background: var(--yellow-soft);
+    color: var(--yellow);
+    border: 1px solid rgba(251,191,36,0.2);
+  }
+  .input-tag.recipient {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(129,140,248,0.2);
+    cursor: default;
+  }
+  .input-tag .tag-remove {
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+  }
+  .input-tag .tag-remove:hover {
+    opacity: 1;
+  }
+  .mention-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 6px;
+    background: var(--bg-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
-    outline: none;
+    min-width: 180px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    display: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-surface) transparent;
+  }
+  .mention-popup.visible {
+    display: block;
+    animation: slideIn 0.15s cubic-bezier(0.16,1,0.3,1);
+  }
+  .mention-item {
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-secondary);
     cursor: pointer;
-    flex-shrink: 0;
-    margin-bottom: 1px;
+    transition: background 0.1s ease;
   }
-  .input-bar select:focus {
-    border-color: var(--accent);
+  .mention-item:hover, .mention-item.active {
+    background: var(--accent-soft);
+    color: var(--accent);
   }
+  .mention-item:first-child { border-radius: 7px 7px 0 0; }
+  .mention-item:last-child { border-radius: 0 0 7px 7px; }
+  .mention-item:only-child { border-radius: 7px; }
   .input-bar textarea {
     flex: 1;
     font-family: var(--font);
@@ -566,6 +638,50 @@ return `<!DOCTYPE html>
     height: 28px;
     padding: 6px 24px;
   }
+  #image-preview {
+    display: none;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  #image-preview.active {
+    display: flex;
+  }
+  #image-preview img {
+    max-width: 120px;
+    max-height: 80px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  #image-preview .remove-img {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  #image-preview .remove-img:hover {
+    border-color: var(--red-border);
+    color: var(--red);
+    background: var(--red-soft);
+  }
+  .msg-image img {
+    max-width: 300px;
+    max-height: 200px;
+    border-radius: 6px;
+    margin-top: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .msg-image img:hover {
+    border-color: rgba(255,255,255,0.15);
+  }
   @keyframes typingBlink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
@@ -598,21 +714,21 @@ return `<!DOCTYPE html>
       <ul id="channel-list"></ul>
       <span class="sidebar-label">On Air</span>
       <ul id="user-list"></ul>
-      <button id="stop-all">Stop All</button>
+      <button id="stop-all">Kick all agents</button>
     </div>
     <div class="message-area">
       <div id="messages">
         <div class="empty">Waiting for transmissions...</div>
       </div>
       <div id="typing-bar"></div>
+      <div id="image-preview"></div>
       <div class="input-bar">
-        <select id="send-channel">
-          <option value="#all">#all</option>
-        </select>
-        <select id="send-to">
-          <option value="@all">@all</option>
-        </select>
-        <textarea id="send-input" placeholder="Send a message..." rows="1"></textarea>
+        <span class="input-tag channel" id="channel-tag">#all</span>
+        <span class="input-tag recipient" id="recipient-tag">@all</span>
+        <div class="input-bar-wrapper">
+          <div class="mention-popup" id="mention-popup"></div>
+          <textarea id="send-input" placeholder="Send a message... (type @ to mention)" rows="1"></textarea>
+        </div>
         <button class="send-btn" id="send-btn">Send</button>
       </div>
     </div>
@@ -626,11 +742,12 @@ return `<!DOCTYPE html>
     const statusEl = document.getElementById("status");
     const channelHeaderEl = document.getElementById("channel-header");
     const users = new Map(); // name -> online (boolean)
-    const channels = new Map(); // name -> { memberCount, createdBy }
-    const typingUsers = new Map(); // name -> timeoutId
+    const channels = new Map(); // name -> { memberCount, createdBy, members }
+    const typingUsers = new Map(); // name -> { timeoutId, channel }
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
 
     let selectedChannel = "#all";
+    const unreadCounts = {}; // channel -> count
 
     function formatTime(ts) {
       return new Date(ts).toLocaleTimeString();
@@ -655,7 +772,7 @@ return `<!DOCTYPE html>
 
     const typingBarEl = document.getElementById("typing-bar");
     function renderTypingBar() {
-      const names = [...typingUsers.keys()];
+      const names = [...typingUsers.entries()].filter(([, v]) => v.channel === selectedChannel).map(([k]) => k);
       if (names.length === 0) {
         typingBarEl.className = "";
         typingBarEl.textContent = "";
@@ -672,7 +789,8 @@ return `<!DOCTYPE html>
         const info = document.createElement("span");
         info.className = "user-info";
         const dotCls = online ? "user-dot" : "user-dot offline";
-        const typingHtml = typingUsers.has(u) ? '<span class="typing-indicator">typing...</span>' : '';
+        const tu = typingUsers.get(u);
+        const typingHtml = tu && tu.channel === selectedChannel ? '<span class="typing-indicator">typing...</span>' : '';
         info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>' + typingHtml;
         const btn = document.createElement("button");
         btn.className = "kick-btn";
@@ -682,16 +800,22 @@ return `<!DOCTYPE html>
         li.appendChild(btn);
         userListEl.appendChild(li);
       }
-      if (typeof updateSendTo === "function") updateSendTo();
+      // Reset recipient if the current target left
+      if (recipientTarget !== "@all") {
+        const targetName = recipientTarget.slice(1);
+        if (!users.has(targetName)) setRecipient("@all");
+      }
+      updateChannelHeader();
     }
 
     function refreshChannels() {
       fetch("/channels").then(r => r.json()).then(data => {
         channels.clear();
         for (const ch of data.channels) {
-          channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy });
+          channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
         }
         renderChannels();
+        updateChannelHeader();
       }).catch(() => {});
     }
 
@@ -699,11 +823,12 @@ return `<!DOCTYPE html>
       channelListEl.innerHTML = "";
       for (const [name, info] of channels) {
         const li = document.createElement("li");
-        const badge = '<span class="channel-badge">' + (info.memberCount || 0) + '</span>';
+        const unread = unreadCounts[name] || 0;
+        const unreadBadge = unread > 0 ? '<span class="channel-unread">' + unread + '</span>' : '';
         if (name === "#all") {
-          li.innerHTML = '<span class="channel-name">' + name + '</span>' + badge;
+          li.innerHTML = '<span class="channel-name">' + name + '</span>' + unreadBadge;
         } else {
-          li.innerHTML = '<span class="channel-name">' + name + '</span>' + badge + '<button class="channel-del">x</button>';
+          li.innerHTML = '<span class="channel-name">' + name + '</span>' + unreadBadge + '<button class="channel-del">x</button>';
           li.querySelector(".channel-del").onclick = (e) => {
             e.stopPropagation();
             if (confirm("Delete " + name + "?")) deleteChannel(name);
@@ -713,14 +838,59 @@ return `<!DOCTYPE html>
         li.onclick = () => selectChannel(name);
         channelListEl.appendChild(li);
       }
-      updateSendChannel();
+    }
+
+    function updateChannelHeader() {
+      if (!selectedChannel) {
+        channelHeaderEl.innerHTML = "";
+        return;
+      }
+      let membersHtml = "";
+      if (selectedChannel === "#all") {
+        const onlineUsers = [...users.keys()];
+        const count = onlineUsers.length;
+        const names = onlineUsers.join(", ");
+        membersHtml = count > 0
+          ? '<span class="channel-members">' + count + (count === 1 ? ' member' : ' members') + ': ' + names + '</span>'
+          : '<span class="channel-members">0 members</span>';
+      } else {
+        const chInfo = channels.get(selectedChannel);
+        const members = chInfo ? chInfo.members : [];
+        const count = members.length;
+        const names = members.join(", ");
+        membersHtml = count > 0
+          ? '<span class="channel-members">' + count + (count === 1 ? ' member' : ' members') + ': ' + names + '</span>'
+          : '<span class="channel-members">0 members</span>';
+      }
+      channelHeaderEl.innerHTML = '<span>' + selectedChannel + '</span> — ' + membersHtml;
+    }
+
+    function markChannelRead(channel) {
+      fetch("/admin-mark-read", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ channel }),
+      }).catch(() => {});
+      delete unreadCounts[channel];
+      renderChannels();
     }
 
     function selectChannel(name) {
       selectedChannel = name;
-      channelHeaderEl.textContent = name ? name : "";
-      renderChannels();
+      channelTagEl.textContent = name || "#all";
+      updateChannelHeader();
+      // Reset recipient if not a member of the new channel
+      if (recipientTarget !== "@all" && name !== "#all") {
+        const chInfo = channels.get(name);
+        const members = chInfo ? chInfo.members : [];
+        if (members.length > 0 && !members.includes(recipientTarget.slice(1))) {
+          setRecipient("@all");
+        }
+      }
+      markChannelRead(name);
       applyChannelFilter();
+      renderTypingBar();
+      renderUsers();
     }
 
     function applyChannelFilter() {
@@ -759,40 +929,176 @@ return `<!DOCTYPE html>
     };
 
     // Send from dashboard
-    const sendChannelEl = document.getElementById("send-channel");
-    const sendToEl = document.getElementById("send-to");
     const sendInputEl = document.getElementById("send-input");
     const sendBtnEl = document.getElementById("send-btn");
+    const channelTagEl = document.getElementById("channel-tag");
+    const recipientTagEl = document.getElementById("recipient-tag");
+    const mentionPopupEl = document.getElementById("mention-popup");
+    let recipientTarget = "@all";
+    const MAX_IMAGE_SIZE = 1024; // max長辺 px
+    let pendingImage = null; // { data, mimeType }
 
-    function updateSendTo() {
-      const current = sendToEl.value;
-      sendToEl.innerHTML = '<option value="@all">@all</option>';
-      for (const [u] of users) {
-        const opt = document.createElement("option");
-        opt.value = "@" + u;
-        opt.textContent = "@" + u;
-        sendToEl.appendChild(opt);
-      }
-      if ([...sendToEl.options].some(o => o.value === current)) {
-        sendToEl.value = current;
+    function resizeImage(file, maxSize, callback) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        const img = new Image();
+        img.onload = () => {
+          const w = img.width;
+          const h = img.height;
+          if (w <= maxSize && h <= maxSize) {
+            callback(dataUrl.split(",")[1]);
+            return;
+          }
+          const scale = maxSize / Math.max(w, h);
+          const nw = Math.round(w * scale);
+          const nh = Math.round(h * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = nw;
+          canvas.height = nh;
+          canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+          const resized = canvas.toDataURL("image/png");
+          callback(resized.split(",")[1]);
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    }
+    const imagePreviewEl = document.getElementById("image-preview");
+
+    function renderImagePreview() {
+      if (pendingImage) {
+        imagePreviewEl.innerHTML = '<img src="data:' + pendingImage.mimeType + ';base64,' + pendingImage.data + '">'
+          + '<button class="remove-img">Remove</button>';
+        imagePreviewEl.classList.add("active");
+        imagePreviewEl.querySelector(".remove-img").onclick = () => {
+          pendingImage = null;
+          renderImagePreview();
+        };
+      } else {
+        imagePreviewEl.innerHTML = "";
+        imagePreviewEl.classList.remove("active");
       }
     }
 
-    function updateSendChannel() {
-      const current = sendChannelEl.value;
-      sendChannelEl.innerHTML = "";
-      for (const [name] of channels) {
-        const opt = document.createElement("option");
-        opt.value = name;
-        opt.textContent = name;
-        sendChannelEl.appendChild(opt);
+    sendInputEl.addEventListener("paste", (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (!blob) return;
+          resizeImage(blob, MAX_IMAGE_SIZE, (base64) => {
+            pendingImage = { data: base64, mimeType: "image/png" };
+            renderImagePreview();
+          });
+          return;
+        }
       }
-      if ([...sendChannelEl.options].some(o => o.value === current)) {
-        sendChannelEl.value = current;
+    });
+
+    let mentionActive = false;
+    let mentionIndex = 0;
+    let mentionFiltered = [];
+
+    function setRecipient(value) {
+      recipientTarget = value;
+      recipientTagEl.innerHTML = value === "@all"
+        ? "@all"
+        : value + ' <span class="tag-remove">&times;</span>';
+    }
+
+    recipientTagEl.addEventListener("click", (e) => {
+      if (e.target.classList.contains("tag-remove")) {
+        setRecipient("@all");
       }
-      if (selectedChannel && [...sendChannelEl.options].some(o => o.value === selectedChannel)) {
-        sendChannelEl.value = selectedChannel;
+    });
+
+    let popupMode = ""; // "mention" or "channel"
+
+    function getPopupQuery() {
+      const val = sendInputEl.value;
+      const pos = sendInputEl.selectionStart;
+      const before = val.slice(0, pos);
+      const mentionMatch = before.match(/@([\\w-]*)$/);
+      if (mentionMatch) return { mode: "mention", query: mentionMatch[1] };
+      const channelMatch = before.match(/#([\\w-]*)$/);
+      if (channelMatch) return { mode: "channel", query: channelMatch[1] };
+      return null;
+    }
+
+    function getMentionCandidates() {
+      const chInfo = channels.get(selectedChannel);
+      const memberList = chInfo ? chInfo.members : [];
+      const candidates = [];
+      for (const [u] of users) {
+        if (selectedChannel !== "#all" && memberList.length > 0 && !memberList.includes(u)) continue;
+        candidates.push(u);
       }
+      return candidates;
+    }
+
+    function getChannelCandidates() {
+      return [...channels.keys()];
+    }
+
+    function showPopup() {
+      const result = getPopupQuery();
+      if (!result) { hidePopup(); return; }
+      const candidates = result.mode === "mention" ? getMentionCandidates() : getChannelCandidates();
+      mentionFiltered = candidates.filter(c => c.toLowerCase().startsWith((result.mode === "channel" ? "#" : "") + result.query.toLowerCase()));
+      if (result.mode === "channel") mentionFiltered = mentionFiltered.map(c => c.replace(/^#/, ""));
+      if (mentionFiltered.length === 0) { hidePopup(); return; }
+      mentionIndex = 0;
+      mentionActive = true;
+      popupMode = result.mode;
+      renderPopup();
+    }
+
+    function renderPopup() {
+      const prefix = popupMode === "channel" ? "#" : "@";
+      mentionPopupEl.innerHTML = "";
+      mentionFiltered.forEach((name, i) => {
+        const div = document.createElement("div");
+        div.className = "mention-item" + (i === mentionIndex ? " active" : "");
+        div.textContent = prefix + name;
+        div.addEventListener("mouseenter", () => {
+          mentionIndex = i;
+          mentionPopupEl.querySelectorAll(".mention-item").forEach((el, j) => {
+            el.classList.toggle("active", j === i);
+          });
+        });
+        div.addEventListener("mousedown", (e) => { e.preventDefault(); selectPopupItem(name); });
+        mentionPopupEl.appendChild(div);
+      });
+      mentionPopupEl.classList.add("visible");
+    }
+
+    function hidePopup() {
+      mentionActive = false;
+      mentionFiltered = [];
+      popupMode = "";
+      mentionPopupEl.classList.remove("visible");
+    }
+
+    function selectPopupItem(name) {
+      const val = sendInputEl.value;
+      const pos = sendInputEl.selectionStart;
+      const before = val.slice(0, pos);
+      const after = val.slice(pos);
+      if (popupMode === "channel") {
+        const replaced = before.replace(/#[\\w-]*$/, "#" + name + " ");
+        sendInputEl.value = replaced + after;
+        sendInputEl.selectionStart = sendInputEl.selectionEnd = replaced.length;
+      } else {
+        const replaced = before.replace(/@[\\w-]*$/, "");
+        sendInputEl.value = replaced + after;
+        sendInputEl.selectionStart = sendInputEl.selectionEnd = replaced.length;
+        setRecipient("@" + name);
+      }
+      hidePopup();
+      sendInputEl.focus();
     }
 
     function expectReply(name) {
@@ -809,18 +1115,27 @@ return `<!DOCTYPE html>
       if (timer) { clearTimeout(timer); pendingReply.delete(name); }
     }
 
+    function renderImageTag(image) {
+      if (!image) return "";
+      return '<div class="msg-image"><img src="data:' + image.mimeType + ';base64,' + image.data + '" onclick="window.open(this.src)"></div>';
+    }
+
     function sendMessage() {
       const content = sendInputEl.value.trim();
-      if (!content) return;
-      const channel = sendChannelEl.value || "#all";
-      const target = sendToEl.value;
+      if (!content && !pendingImage) return;
+      const channel = selectedChannel;
+      const target = recipientTarget;
+      const payload = { to: target, content, channel };
+      if (pendingImage) payload.image = pendingImage;
       fetch("/admin-send", {
         method: "POST",
         headers: adminHeaders,
-        body: JSON.stringify({ to: target, content, channel }),
+        body: JSON.stringify(payload),
       }).then(() => {
         sendInputEl.value = "";
         sendInputEl.style.height = "auto";
+        pendingImage = null;
+        renderImagePreview();
         sendInputEl.focus();
         // Start 30s reply expectation timer
         const targetName = target.startsWith("@") ? target.slice(1) : target;
@@ -835,14 +1150,25 @@ return `<!DOCTYPE html>
     sendBtnEl.onclick = sendMessage;
 
     sendInputEl.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.isComposing) return;
-      if (!e.shiftKey && !e.metaKey) { e.preventDefault(); sendMessage(); }
+      if (mentionActive && !e.isComposing) {
+        if (e.key === "ArrowDown") { e.preventDefault(); mentionIndex = (mentionIndex + 1) % mentionFiltered.length; renderPopup(); return; }
+        if (e.key === "ArrowUp") { e.preventDefault(); mentionIndex = (mentionIndex - 1 + mentionFiltered.length) % mentionFiltered.length; renderPopup(); return; }
+        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); selectPopupItem(mentionFiltered[mentionIndex]); return; }
+        if (e.key === "Escape") { e.preventDefault(); hidePopup(); return; }
+      }
+      if (e.isComposing) return;
+      if (e.key === "Enter" && !e.shiftKey && !e.metaKey) { e.preventDefault(); sendMessage(); }
     });
 
     sendInputEl.addEventListener("input", () => {
       sendInputEl.style.height = "auto";
       sendInputEl.style.height = Math.min(sendInputEl.scrollHeight, 120) + "px";
       sendInputEl.style.overflowY = sendInputEl.scrollHeight > 120 ? "auto" : "hidden";
+      showPopup();
+    });
+
+    sendInputEl.addEventListener("blur", () => {
+      setTimeout(() => hidePopup(), 150);
     });
 
     // Filter toggle
@@ -888,10 +1214,48 @@ return `<!DOCTYPE html>
 
     fetch("/channels").then(r => r.json()).then(data => {
       for (const ch of data.channels) {
-        channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy });
+        channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
       }
       renderChannels();
+      updateChannelHeader();
     }).catch(() => {});
+
+    // Load unread counts
+    fetch("/admin-unread-counts", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.counts) {
+          for (const [ch, cnt] of Object.entries(data.counts)) {
+            unreadCounts[ch] = cnt;
+          }
+          renderChannels();
+        }
+      }).catch(() => {});
+
+    // Load message history from DB
+    fetch("/admin-channel-history", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          clearEmpty();
+          for (const msg of data.messages) {
+            const cls = msg.from === "operator" ? "message operator" : "message";
+            const channelTag = '<span class="channel-tag">' + (msg.channel || "#all") + '</span>';
+            addMessage(
+              '<span class="time">' + formatTime(msg.timestamp) + '</span>' +
+              channelTag +
+              '<span class="from">' + msg.from + '</span> ' +
+              '<span class="to">&rarr; ' + msg.to + '</span>' +
+              '<div class="content">' + msg.content.replace(/</g, "&lt;") + '</div>' +
+              renderImageTag(msg.image),
+              cls,
+              msg.channel || "#all"
+            );
+          }
+        }
+        // Mark #all as read after loading history
+        markChannelRead("#all");
+      }).catch(() => {});
 
     const es = new EventSource("/events");
 
@@ -928,7 +1292,7 @@ return `<!DOCTYPE html>
         clearPendingReply(ev.from);
         if (users.has(ev.from)) users.set(ev.from, true);
         const existingTimer = typingUsers.get(ev.from);
-        if (existingTimer) { clearTimeout(existingTimer); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
+        if (existingTimer) { clearTimeout(existingTimer.timeoutId); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
         const cls = ev.from === "operator" ? "message operator" : "message";
         const channelTag = '<span class="channel-tag">' + (ev.channel || "#all") + '</span>';
         addMessage(
@@ -936,10 +1300,19 @@ return `<!DOCTYPE html>
           channelTag +
           '<span class="from">' + ev.from + '</span> ' +
           '<span class="to">&rarr; ' + ev.to + '</span>' +
-          '<div class="content">' + ev.content.replace(/</g, "&lt;") + '</div>',
+          '<div class="content">' + ev.content.replace(/</g, "&lt;") + '</div>' +
+          renderImageTag(ev.image),
           cls,
           ev.channel || "#all"
         );
+        // Unread tracking
+        const msgChannel = ev.channel || "#all";
+        if (msgChannel === selectedChannel) {
+          markChannelRead(msgChannel);
+        } else {
+          unreadCounts[msgChannel] = (unreadCounts[msgChannel] || 0) + 1;
+          renderChannels();
+        }
       } else if (ev.type === "channel_create") {
         refreshChannels();
         addMessage(
@@ -964,8 +1337,14 @@ return `<!DOCTYPE html>
           "system channel-event leave",
           ev.channel
         );
+      } else if (ev.type === "read_update") {
+        if (ev.userName === "operator") {
+          delete unreadCounts[ev.channel];
+          renderChannels();
+        }
       } else if (ev.type === "channel_delete") {
         if (selectedChannel === ev.name) selectedChannel = "#all";
+        delete unreadCounts[ev.name];
         refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
@@ -977,8 +1356,8 @@ return `<!DOCTYPE html>
         clearPendingReply(ev.name);
         if (users.has(ev.name)) users.set(ev.name, true);
         const prev = typingUsers.get(ev.name);
-        if (prev) clearTimeout(prev);
-        typingUsers.set(ev.name, setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); renderTypingBar(); }, 60000));
+        if (prev) clearTimeout(prev.timeoutId);
+        typingUsers.set(ev.name, { timeoutId: setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); renderTypingBar(); }, 60000), channel: ev.channel || "#all" });
         renderUsers();
         renderTypingBar();
       }

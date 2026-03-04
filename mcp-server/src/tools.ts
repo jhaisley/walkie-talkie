@@ -1,6 +1,45 @@
+import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
+import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { HubClient } from "./client.js";
+
+const MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+function getMimeType(source: string): string {
+  const ext = path.extname(source).toLowerCase();
+  return MIME_TYPES[ext] ?? "image/png";
+}
+
+function fetchUrl(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const transport = url.startsWith("https") ? https : http;
+    transport
+      .get(url, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          fetchUrl(res.headers.location).then(resolve, reject);
+          return;
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      })
+      .on("error", reject);
+  });
+}
 
 let client: HubClient;
 let joinToken: string;
@@ -35,9 +74,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Registration failed: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Registration failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -50,19 +87,31 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     {
       to: z.string().describe("Recipient: @name or @all"),
       message: z.string().describe("Message content"),
-      channel: z.string().optional().describe("Channel to send to (default: #all)"),
+      channel: z
+        .string()
+        .optional()
+        .describe(
+          "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted.",
+        ),
+      image_data: z
+        .string()
+        .optional()
+        .describe("Base64-encoded image data. Must be provided together with image_mime_type."),
+      image_mime_type: z
+        .string()
+        .optional()
+        .describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data."),
     },
-    async ({ to, message, channel }) => {
+    async ({ to, message, channel, image_data, image_mime_type }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
       try {
-        const result = await client.send(currentToken, to, message, channel);
+        const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : undefined;
+        const result = await client.send(currentToken, to, message, channel, image);
         return {
           content: [
             {
@@ -73,9 +122,50 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
+          content: [{ type: "text" as const, text: `Send failed: ${(e as Error).message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "radio_send_image",
+    "Send an image from a local file path or URL. Much faster than passing base64 via radio_over.",
+    {
+      to: z.string().describe("Recipient: @name or @all"),
+      source: z.string().describe("Image file path or URL (http/https)"),
+      message: z.string().optional().describe("Optional text message to accompany the image"),
+      channel: z.string().optional().describe("Channel to send to (default: #all)"),
+    },
+    async ({ to, source, message, channel }) => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          isError: true,
+        };
+      }
+      try {
+        let buf: Buffer;
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+          buf = await fetchUrl(source);
+        } else {
+          buf = fs.readFileSync(source);
+        }
+        const data = buf.toString("base64");
+        const mimeType = getMimeType(source);
+        const result = await client.send(currentToken, to, message ?? "", channel, { data, mimeType });
+        return {
           content: [
-            { type: "text" as const, text: `Send failed: ${(e as Error).message}` },
+            {
+              type: "text" as const,
+              text: `Image sent to ${result.to} in ${channel || "#all"} (id: ${result.id})`,
+            },
           ],
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to send image: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -89,9 +179,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -99,9 +187,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         const result = await client.poll(currentToken);
         if (!result || result.messages.length === 0) {
           return {
-            content: [
-              { type: "text" as const, text: "No new messages (poll timed out). Try again." },
-            ],
+            content: [{ type: "text" as const, text: "No new messages (poll timed out). Try again." }],
           };
         }
         // Check for kill signal from operator
@@ -111,16 +197,43 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           currentName = null;
           return {
             content: [
-              { type: "text" as const, text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." },
+              {
+                type: "text" as const,
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+              },
             ],
             isError: true,
           };
         }
-        const formatted = result.messages
-          .map((m) => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`)
-          .join("\n");
+        const contentBlocks: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> =
+          [];
+
+        for (const m of result.messages) {
+          if (m.image) {
+            contentBlocks.push({
+              type: "image" as const,
+              data: m.image.data,
+              mimeType: m.image.mimeType,
+            });
+          }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text" as const, text: line });
+        }
+
+        // Remind the agent to reply in the same channel the message was received on
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel)),
+        ];
+        const hint =
+          channels.length > 0
+            ? `\n\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
+            : "";
+        if (hint) {
+          contentBlocks.push({ type: "text" as const, text: hint });
+        }
         return {
-          content: [{ type: "text" as const, text: formatted }],
+          content: contentBlocks,
         };
       } catch (e) {
         const msg = (e as Error).message;
@@ -129,15 +242,16 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           currentName = null;
           return {
             content: [
-              { type: "text" as const, text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." },
+              {
+                type: "text" as const,
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+              },
             ],
             isError: true,
           };
         }
         return {
-          content: [
-            { type: "text" as const, text: `Poll failed: ${msg}` },
-          ],
+          content: [{ type: "text" as const, text: `Poll failed: ${msg}` }],
           isError: true,
         };
       }
@@ -151,23 +265,17 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
       try {
-        const [users, channels] = await Promise.all([
-          client.users(currentToken),
-          client.listChannels(currentToken),
-        ]);
-        const userText = users.length > 0
-          ? `Connected users: ${users.join(", ")}`
-          : "No users connected.";
-        const channelText = channels.length > 0
-          ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}`
-          : "No channels.";
+        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
+        const userText = users.length > 0 ? `Connected users: ${users.join(", ")}` : "No users connected.";
+        const channelText =
+          channels.length > 0
+            ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}`
+            : "No channels.";
         return {
           content: [
             {
@@ -178,9 +286,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -194,9 +300,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ name }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -212,9 +316,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to create channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to create channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -228,9 +330,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -246,9 +346,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to join channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to join channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -262,9 +360,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -280,9 +376,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to leave channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to leave channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -299,9 +393,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel, user }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -317,47 +409,34 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to invite: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to invite: ${(e as Error).message}` }],
           isError: true,
         };
       }
     },
   );
 
-  server.tool(
-    "radio_out",
-    "Sign off and disconnect from the Walkie-Talkie hub. Over and out.",
-    {},
-    async () => {
-      if (!currentToken) {
-        return {
-          content: [
-            { type: "text" as const, text: "Not registered." },
-          ],
-        };
-      }
-      try {
-        await client.unregister(currentToken);
-        const name = currentName;
-        currentToken = null;
-        currentName = null;
-        return {
-          content: [
-            { type: "text" as const, text: `Unregistered "${name}". Disconnected from hub.` },
-          ],
-        };
-      } catch (e) {
-        return {
-          content: [
-            { type: "text" as const, text: `Unregister failed: ${(e as Error).message}` },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+  server.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
+    if (!currentToken) {
+      return {
+        content: [{ type: "text" as const, text: "Not registered." }],
+      };
+    }
+    try {
+      await client.unregister(currentToken);
+      const name = currentName;
+      currentToken = null;
+      currentName = null;
+      return {
+        content: [{ type: "text" as const, text: `Unregistered "${name}". Disconnected from hub.` }],
+      };
+    } catch (e) {
+      return {
+        content: [{ type: "text" as const, text: `Unregister failed: ${(e as Error).message}` }],
+        isError: true,
+      };
+    }
+  });
 
   return server;
 }

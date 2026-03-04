@@ -1,6 +1,6 @@
 {
   "name": "walkie-talkie",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -11,9 +11,14 @@
     "build": "npm run build --workspaces",
     "clean": "npm run clean --workspaces",
     "start": "npm start --workspace=hub",
-    "bundle": "node scripts/bundle.mjs"
+    "bundle": "node scripts/bundle.mjs",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "check": "biome check ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.5",
     "esbuild": "^0.25.0"
   }
 }

@@ -3222,8 +3222,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path) {
-      let input = path;
+    function removeDotSegments(path2) {
+      let input = path2;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3422,8 +3422,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path && path !== "/" ? path : void 0;
+        const [path2, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -3482,7 +3482,7 @@ var require_schemes = __commonJS({
       urnComponent.nss = (uuidComponent.uuid || "").toLowerCase();
       return urnComponent;
     }
-    var http2 = (
+    var http3 = (
       /** @type {SchemeHandler} */
       {
         scheme: "http",
@@ -3491,11 +3491,11 @@ var require_schemes = __commonJS({
         serialize: httpSerialize
       }
     );
-    var https2 = (
+    var https3 = (
       /** @type {SchemeHandler} */
       {
         scheme: "https",
-        domainHost: http2.domainHost,
+        domainHost: http3.domainHost,
         parse: httpParse,
         serialize: httpSerialize
       }
@@ -3539,8 +3539,8 @@ var require_schemes = __commonJS({
     var SCHEMES = (
       /** @type {Record<SchemeName, SchemeHandler>} */
       {
-        http: http2,
-        https: https2,
+        http: http3,
+        https: https3,
         ws,
         wss,
         urn,
@@ -6785,12 +6785,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs, exportName) {
+    function addFormats(ajv, list, fs2, exportName) {
       var _a2;
       var _b;
       (_a2 = (_b = ajv.opts.code).formats) !== null && _a2 !== void 0 ? _a2 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs[f]);
+        ajv.addFormat(f, fs2[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7568,10 +7568,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path) {
-  if (!path)
+function getElementAtPath(obj, path2) {
+  if (!path2)
     return obj;
-  return path.reduce((acc, key) => acc?.[key], obj);
+  return path2.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7954,11 +7954,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path, issues) {
+function prefixIssues(path2, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path);
+    iss.path.unshift(path2);
     return iss;
   });
 }
@@ -8141,7 +8141,7 @@ function formatError(error48, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error48, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error49, path = []) => {
+  const processError = (error49, path2 = []) => {
     var _a2, _b;
     for (const issue2 of error49.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -8151,7 +8151,7 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path, ...issue2.path];
+        const fullpath = [...path2, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8183,8 +8183,8 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path) {
+  const path2 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path2) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -20161,13 +20161,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path = ref.slice(1).split("/").filter(Boolean);
-  if (path.length === 0) {
+  const path2 = ref.slice(1).split("/").filter(Boolean);
+  if (path2.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path[0] === defsKey) {
-    const key = path[1];
+  if (path2[0] === defsKey) {
+    const key = path2[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -22176,6 +22176,12 @@ var StdioServerTransport = class {
   }
 };
 
+// mcp-server/src/tools.ts
+import fs from "node:fs";
+import http2 from "node:http";
+import https2 from "node:https";
+import path from "node:path";
+
 // node_modules/zod/v3/helpers/util.js
 var util;
 (function(util2) {
@@ -22535,8 +22541,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path, errorMaps, issueData } = params;
-  const fullPath = [...path, ...issueData.path || []];
+  const { data, path: path2, errorMaps, issueData } = params;
+  const fullPath = [...path2, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -22651,11 +22657,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path, key) {
+  constructor(parent, value, path2, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path;
+    this._path = path2;
     this._key = key;
   }
   get path() {
@@ -30103,7 +30109,7 @@ var HubClient = class {
       const transport2 = isHttps ? https : http;
       const headers = {};
       if (options.token) {
-        headers["Authorization"] = `Bearer ${options.token}`;
+        headers.Authorization = `Bearer ${options.token}`;
       }
       let bodyStr;
       if (options.body !== void 0) {
@@ -30168,9 +30174,13 @@ var HubClient = class {
       token
     });
   }
-  async send(token, to, content, channel) {
-    const body = { to, content };
+  async send(token, to, content, channel, image) {
+    const body = {
+      to,
+      content
+    };
     if (channel) body.channel = channel;
+    if (image) body.image = image;
     const res = await this.request({
       method: "POST",
       path: "/send",
@@ -30266,6 +30276,36 @@ var HubClient = class {
 };
 
 // mcp-server/src/tools.ts
+var MIME_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp"
+};
+function getMimeType(source) {
+  const ext = path.extname(source).toLowerCase();
+  return MIME_TYPES[ext] ?? "image/png";
+}
+function fetchUrl(url2) {
+  return new Promise((resolve, reject) => {
+    const transport2 = url2.startsWith("https") ? https2 : http2;
+    transport2.get(url2, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        fetchUrl(res.headers.location).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode && res.statusCode >= 400) {
+        reject(new Error(`HTTP ${res.statusCode}`));
+        return;
+      }
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+}
 var client;
 var joinToken;
 var currentToken = null;
@@ -30296,9 +30336,7 @@ function createMcpServer(hubUrl2, joinTok) {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Registration failed: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Registration failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30310,19 +30348,22 @@ function createMcpServer(hubUrl2, joinTok) {
     {
       to: external_exports.string().describe("Recipient: @name or @all"),
       message: external_exports.string().describe("Message content"),
-      channel: external_exports.string().optional().describe("Channel to send to (default: #all)")
+      channel: external_exports.string().optional().describe(
+        "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted."
+      ),
+      image_data: external_exports.string().optional().describe("Base64-encoded image data. Must be provided together with image_mime_type."),
+      image_mime_type: external_exports.string().optional().describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data.")
     },
-    async ({ to, message, channel }) => {
+    async ({ to, message, channel, image_data, image_mime_type }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
       try {
-        const result = await client.send(currentToken, to, message, channel);
+        const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : void 0;
+        const result = await client.send(currentToken, to, message, channel, image);
         return {
           content: [
             {
@@ -30333,9 +30374,49 @@ function createMcpServer(hubUrl2, joinTok) {
         };
       } catch (e) {
         return {
+          content: [{ type: "text", text: `Send failed: ${e.message}` }],
+          isError: true
+        };
+      }
+    }
+  );
+  server2.tool(
+    "radio_send_image",
+    "Send an image from a local file path or URL. Much faster than passing base64 via radio_over.",
+    {
+      to: external_exports.string().describe("Recipient: @name or @all"),
+      source: external_exports.string().describe("Image file path or URL (http/https)"),
+      message: external_exports.string().optional().describe("Optional text message to accompany the image"),
+      channel: external_exports.string().optional().describe("Channel to send to (default: #all)")
+    },
+    async ({ to, source, message, channel }) => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          isError: true
+        };
+      }
+      try {
+        let buf;
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+          buf = await fetchUrl(source);
+        } else {
+          buf = fs.readFileSync(source);
+        }
+        const data = buf.toString("base64");
+        const mimeType = getMimeType(source);
+        const result = await client.send(currentToken, to, message ?? "", channel, { data, mimeType });
+        return {
           content: [
-            { type: "text", text: `Send failed: ${e.message}` }
-          ],
+            {
+              type: "text",
+              text: `Image sent to ${result.to} in ${channel || "#all"} (id: ${result.id})`
+            }
+          ]
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Failed to send image: ${e.message}` }],
           isError: true
         };
       }
@@ -30348,9 +30429,7 @@ function createMcpServer(hubUrl2, joinTok) {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30358,9 +30437,7 @@ function createMcpServer(hubUrl2, joinTok) {
         const result = await client.poll(currentToken);
         if (!result || result.messages.length === 0) {
           return {
-            content: [
-              { type: "text", text: "No new messages (poll timed out). Try again." }
-            ]
+            content: [{ type: "text", text: "No new messages (poll timed out). Try again." }]
           };
         }
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
@@ -30369,14 +30446,38 @@ function createMcpServer(hubUrl2, joinTok) {
           currentName = null;
           return {
             content: [
-              { type: "text", text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." }
+              {
+                type: "text",
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+              }
             ],
             isError: true
           };
         }
-        const formatted = result.messages.map((m) => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}`).join("\n");
+        const contentBlocks = [];
+        for (const m of result.messages) {
+          if (m.image) {
+            contentBlocks.push({
+              type: "image",
+              data: m.image.data,
+              mimeType: m.image.mimeType
+            });
+          }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text", text: line });
+        }
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))
+        ];
+        const hint = channels.length > 0 ? `
+
+IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}` : "";
+        if (hint) {
+          contentBlocks.push({ type: "text", text: hint });
+        }
         return {
-          content: [{ type: "text", text: formatted }]
+          content: contentBlocks
         };
       } catch (e) {
         const msg = e.message;
@@ -30385,15 +30486,16 @@ function createMcpServer(hubUrl2, joinTok) {
           currentName = null;
           return {
             content: [
-              { type: "text", text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." }
+              {
+                type: "text",
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+              }
             ],
             isError: true
           };
         }
         return {
-          content: [
-            { type: "text", text: `Poll failed: ${msg}` }
-          ],
+          content: [{ type: "text", text: `Poll failed: ${msg}` }],
           isError: true
         };
       }
@@ -30406,17 +30508,12 @@ function createMcpServer(hubUrl2, joinTok) {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
       try {
-        const [users, channels] = await Promise.all([
-          client.users(currentToken),
-          client.listChannels(currentToken)
-        ]);
+        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
         const userText = users.length > 0 ? `Connected users: ${users.join(", ")}` : "No users connected.";
         const channelText = channels.length > 0 ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}` : "No channels.";
         return {
@@ -30430,9 +30527,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30445,9 +30540,7 @@ ${channelText}`
     async ({ name }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30463,9 +30556,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to create channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to create channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30478,9 +30569,7 @@ ${channelText}`
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30496,9 +30585,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to join channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to join channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30511,9 +30598,7 @@ ${channelText}`
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30529,9 +30614,7 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to leave channel: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to leave channel: ${e.message}` }],
           isError: true
         };
       }
@@ -30547,9 +30630,7 @@ ${channelText}`
     async ({ channel, user }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text", text: "Not on the air. Use radio_join first." }
-          ],
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
           isError: true
         };
       }
@@ -30565,46 +30646,33 @@ ${channelText}`
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text", text: `Failed to invite: ${e.message}` }
-          ],
+          content: [{ type: "text", text: `Failed to invite: ${e.message}` }],
           isError: true
         };
       }
     }
   );
-  server2.tool(
-    "radio_out",
-    "Sign off and disconnect from the Walkie-Talkie hub. Over and out.",
-    {},
-    async () => {
-      if (!currentToken) {
-        return {
-          content: [
-            { type: "text", text: "Not registered." }
-          ]
-        };
-      }
-      try {
-        await client.unregister(currentToken);
-        const name = currentName;
-        currentToken = null;
-        currentName = null;
-        return {
-          content: [
-            { type: "text", text: `Unregistered "${name}". Disconnected from hub.` }
-          ]
-        };
-      } catch (e) {
-        return {
-          content: [
-            { type: "text", text: `Unregister failed: ${e.message}` }
-          ],
-          isError: true
-        };
-      }
+  server2.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
+    if (!currentToken) {
+      return {
+        content: [{ type: "text", text: "Not registered." }]
+      };
     }
-  );
+    try {
+      await client.unregister(currentToken);
+      const name = currentName;
+      currentToken = null;
+      currentName = null;
+      return {
+        content: [{ type: "text", text: `Unregistered "${name}". Disconnected from hub.` }]
+      };
+    } catch (e) {
+      return {
+        content: [{ type: "text", text: `Unregister failed: ${e.message}` }],
+        isError: true
+      };
+    }
+  });
   return server2;
 }
 

@@ -28,7 +28,7 @@ export class HubClient {
 
       const headers: Record<string, string> = {};
       if (options.token) {
-        headers["Authorization"] = `Bearer ${options.token}`;
+        headers.Authorization = `Bearer ${options.token}`;
       }
 
       let bodyStr: string | undefined;
@@ -105,9 +105,14 @@ export class HubClient {
     to: string,
     content: string,
     channel?: string,
+    image?: { data: string; mimeType: string },
   ): Promise<{ id: string; to: string }> {
-    const body: { to: string; content: string; channel?: string } = { to, content };
+    const body: { to: string; content: string; channel?: string; image?: { data: string; mimeType: string } } = {
+      to,
+      content,
+    };
     if (channel) body.channel = channel;
+    if (image) body.image = image;
     const res = await this.request<{ id: string; to: string }>({
       method: "POST",
       path: "/send",
@@ -120,11 +125,27 @@ export class HubClient {
     return res.data;
   }
 
-  async poll(
-    token: string,
-  ): Promise<{ messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }> } | null> {
+  async poll(token: string): Promise<{
+    messages: Array<{
+      id: string;
+      from: string;
+      to: string;
+      content: string;
+      channel: string;
+      timestamp: number;
+      image?: { data: string; mimeType: string };
+    }>;
+  } | null> {
     const res = await this.request<{
-      messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }>;
+      messages: Array<{
+        id: string;
+        from: string;
+        to: string;
+        content: string;
+        channel: string;
+        timestamp: number;
+        image?: { data: string; mimeType: string };
+      }>;
     }>({
       method: "GET",
       path: "/poll",

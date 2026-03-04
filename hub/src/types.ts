@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+export interface MessageImage {
+  data: string; // base64 (no data-URI prefix)
+  mimeType: string; // e.g. "image/png"
+}
+
 export interface Message {
   id: string;
   from: string;
@@ -7,6 +12,7 @@ export interface Message {
   content: string;
   channel: string;
   timestamp: number;
+  image?: MessageImage;
 }
 
 export interface User {
@@ -29,6 +35,7 @@ export interface SendRequest {
   to: string;
   content: string;
   channel?: string;
+  image?: MessageImage;
 }
 
 export interface Channel {
@@ -60,8 +67,4 @@ export type PendingPoll = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-export type RouteHandler = (
-  req: IncomingMessage,
-  res: ServerResponse,
-  userName?: string,
-) => Promise<void>;
+export type RouteHandler = (req: IncomingMessage, res: ServerResponse, userName?: string) => Promise<void>;

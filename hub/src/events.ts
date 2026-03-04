@@ -1,7 +1,15 @@
 import type { ServerResponse } from "node:http";
 
 export type HubEvent =
-  | { type: "message"; from: string; to: string; content: string; channel: string; timestamp: number }
+  | {
+      type: "message";
+      from: string;
+      to: string;
+      content: string;
+      channel: string;
+      timestamp: number;
+      image?: { data: string; mimeType: string };
+    }
   | { type: "join"; name: string; timestamp: number }
   | { type: "leave"; name: string; timestamp: number }
   | { type: "channel_create"; name: string; timestamp: number }
@@ -9,7 +17,8 @@ export type HubEvent =
   | { type: "channel_leave"; channel: string; userName: string; timestamp: number }
   | { type: "channel_delete"; name: string; timestamp: number }
   | { type: "status"; name: string; online: boolean; timestamp: number }
-  | { type: "typing"; name: string; timestamp: number };
+  | { type: "typing"; name: string; channel: string; timestamp: number }
+  | { type: "read_update"; userName: string; channel: string; timestamp: number };
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 

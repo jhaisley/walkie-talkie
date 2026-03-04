@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { Message } from "./types.js";
 import { isUserRegistered } from "./auth.js";
-import { deliverMessage } from "./polling.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
+import { dbSaveMessage } from "./db.js";
+import { deliverMessage } from "./polling.js";
+import type { Message, MessageImage } from "./types.js";
 
 const messageQueues = new Map<string, Message[]>();
 
@@ -29,6 +30,7 @@ export function routeMessage(
   to: string,
   content: string,
   channel = "#all",
+  image?: MessageImage,
 ): Message {
   const members = getChannelMembers(channel);
 
@@ -40,7 +42,10 @@ export function routeMessage(
       content,
       channel,
       timestamp: Date.now(),
+      image,
     };
+
+    dbSaveMessage(message);
 
     // Deliver to all channel members except sender
     for (const user of members) {
@@ -68,7 +73,10 @@ export function routeMessage(
     content,
     channel,
     timestamp: Date.now(),
+    image,
   };
+
+  dbSaveMessage(message);
 
   // Deliver to all channel members except sender
   for (const user of members) {
