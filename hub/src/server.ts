@@ -114,7 +114,7 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   if (body.content === "TYPING") {
     const channel = body.channel || "#all";
     dbUpdateReadCursor(userName!, channel);
-    broadcast({ type: "typing", name: userName!, timestamp: Date.now() });
+    broadcast({ type: "typing", name: userName!, channel, timestamp: Date.now() });
     console.log(`[typing] ${userName}`);
     return sendJson(res, 200, { id: "typing", to: body.to });
   }

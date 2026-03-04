@@ -698,7 +698,7 @@ export function getDashboardHTML(adminToken: string): string {
     const channelHeaderEl = document.getElementById("channel-header");
     const users = new Map(); // name -> online (boolean)
     const channels = new Map(); // name -> { memberCount, createdBy, members }
-    const typingUsers = new Map(); // name -> timeoutId
+    const typingUsers = new Map(); // name -> { timeoutId, channel }
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
 
     let selectedChannel = "#all";
@@ -727,7 +727,7 @@ export function getDashboardHTML(adminToken: string): string {
 
     const typingBarEl = document.getElementById("typing-bar");
     function renderTypingBar() {
-      const names = [...typingUsers.keys()];
+      const names = [...typingUsers.entries()].filter(([, v]) => v.channel === selectedChannel).map(([k]) => k);
       if (names.length === 0) {
         typingBarEl.className = "";
         typingBarEl.textContent = "";
@@ -744,7 +744,8 @@ export function getDashboardHTML(adminToken: string): string {
         const info = document.createElement("span");
         info.className = "user-info";
         const dotCls = online ? "user-dot" : "user-dot offline";
-        const typingHtml = typingUsers.has(u) ? '<span class="typing-indicator">typing...</span>' : '';
+        const tu = typingUsers.get(u);
+        const typingHtml = tu && tu.channel === selectedChannel ? '<span class="typing-indicator">typing...</span>' : '';
         info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>' + typingHtml;
         const btn = document.createElement("button");
         btn.className = "kick-btn";
@@ -843,6 +844,8 @@ export function getDashboardHTML(adminToken: string): string {
       }
       markChannelRead(name);
       applyChannelFilter();
+      renderTypingBar();
+      renderUsers();
     }
 
     function applyChannelFilter() {
@@ -1171,7 +1174,7 @@ export function getDashboardHTML(adminToken: string): string {
         clearPendingReply(ev.from);
         if (users.has(ev.from)) users.set(ev.from, true);
         const existingTimer = typingUsers.get(ev.from);
-        if (existingTimer) { clearTimeout(existingTimer); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
+        if (existingTimer) { clearTimeout(existingTimer.timeoutId); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
         const cls = ev.from === "operator" ? "message operator" : "message";
         const channelTag = '<span class="channel-tag">' + (ev.channel || "#all") + '</span>';
         addMessage(
@@ -1234,8 +1237,8 @@ export function getDashboardHTML(adminToken: string): string {
         clearPendingReply(ev.name);
         if (users.has(ev.name)) users.set(ev.name, true);
         const prev = typingUsers.get(ev.name);
-        if (prev) clearTimeout(prev);
-        typingUsers.set(ev.name, setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); renderTypingBar(); }, 60000));
+        if (prev) clearTimeout(prev.timeoutId);
+        typingUsers.set(ev.name, { timeoutId: setTimeout(() => { typingUsers.delete(ev.name); renderUsers(); renderTypingBar(); }, 60000), channel: ev.channel || "#all" });
         renderUsers();
         renderTypingBar();
       }
