@@ -100,9 +100,19 @@ export class HubClient {
     });
   }
 
-  async send(token: string, to: string, content: string, channel?: string): Promise<{ id: string; to: string }> {
-    const body: { to: string; content: string; channel?: string } = { to, content };
+  async send(
+    token: string,
+    to: string,
+    content: string,
+    channel?: string,
+    image?: { data: string; mimeType: string },
+  ): Promise<{ id: string; to: string }> {
+    const body: { to: string; content: string; channel?: string; image?: { data: string; mimeType: string } } = {
+      to,
+      content,
+    };
     if (channel) body.channel = channel;
+    if (image) body.image = image;
     const res = await this.request<{ id: string; to: string }>({
       method: "POST",
       path: "/send",

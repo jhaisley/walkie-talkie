@@ -54,8 +54,16 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         .describe(
           "Channel to send to. IMPORTANT: Always reply in the same channel where you received the message. Defaults to #all if omitted.",
         ),
+      image_data: z
+        .string()
+        .optional()
+        .describe("Base64-encoded image data. Must be provided together with image_mime_type."),
+      image_mime_type: z
+        .string()
+        .optional()
+        .describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data."),
     },
-    async ({ to, message, channel }) => {
+    async ({ to, message, channel, image_data, image_mime_type }) => {
       if (!currentToken) {
         return {
           content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
@@ -63,7 +71,8 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       }
       try {
-        const result = await client.send(currentToken, to, message, channel);
+        const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : undefined;
+        const result = await client.send(currentToken, to, message, channel, image);
         return {
           content: [
             {
