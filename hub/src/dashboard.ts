@@ -935,7 +935,35 @@ export function getDashboardHTML(adminToken: string): string {
     const recipientTagEl = document.getElementById("recipient-tag");
     const mentionPopupEl = document.getElementById("mention-popup");
     let recipientTarget = "@all";
+    const MAX_IMAGE_SIZE = 1024; // max長辺 px
     let pendingImage = null; // { data, mimeType }
+
+    function resizeImage(file, maxSize, callback) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        const img = new Image();
+        img.onload = () => {
+          const w = img.width;
+          const h = img.height;
+          if (w <= maxSize && h <= maxSize) {
+            callback(dataUrl.split(",")[1]);
+            return;
+          }
+          const scale = maxSize / Math.max(w, h);
+          const nw = Math.round(w * scale);
+          const nh = Math.round(h * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = nw;
+          canvas.height = nh;
+          canvas.getContext("2d").drawImage(img, 0, 0, nw, nh);
+          const resized = canvas.toDataURL("image/png");
+          callback(resized.split(",")[1]);
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    }
     const imagePreviewEl = document.getElementById("image-preview");
 
     function renderImagePreview() {
@@ -961,14 +989,10 @@ export function getDashboardHTML(adminToken: string): string {
           e.preventDefault();
           const blob = item.getAsFile();
           if (!blob) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            const dataUrl = reader.result;
-            const base64 = dataUrl.split(",")[1];
-            pendingImage = { data: base64, mimeType: item.type };
+          resizeImage(blob, MAX_IMAGE_SIZE, (base64) => {
+            pendingImage = { data: base64, mimeType: "image/png" };
             renderImagePreview();
-          };
-          reader.readAsDataURL(blob);
+          });
           return;
         }
       }
