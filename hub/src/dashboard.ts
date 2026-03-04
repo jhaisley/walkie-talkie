@@ -670,7 +670,7 @@ return `<!DOCTYPE html>
       <ul id="channel-list"></ul>
       <span class="sidebar-label">On Air</span>
       <ul id="user-list"></ul>
-      <button id="stop-all">Stop All</button>
+      <button id="stop-all">Kick all agents</button>
     </div>
     <div class="message-area">
       <div id="messages">

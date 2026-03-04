@@ -176,11 +176,11 @@ const handleKick: RouteHandler = async (req, res) => {
 };
 
 const handleKickAll: RouteHandler = async (_req, res) => {
-  const allUsers = [...getRegisteredUsers()];
-  for (const name of allUsers) {
+  const agents = [...getRegisteredUsers()].filter(name => name !== "operator");
+  for (const name of agents) {
     kickUser(name);
   }
-  sendJson(res, 200, { ok: true, kicked: allUsers });
+  sendJson(res, 200, { ok: true, kicked: agents });
 };
 
 const handleAdminSend: RouteHandler = async (req, res) => {
