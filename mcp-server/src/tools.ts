@@ -1,6 +1,45 @@
+import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
+import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { HubClient } from "./client.js";
+
+const MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+function getMimeType(source: string): string {
+  const ext = path.extname(source).toLowerCase();
+  return MIME_TYPES[ext] ?? "image/png";
+}
+
+function fetchUrl(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const transport = url.startsWith("https") ? https : http;
+    transport
+      .get(url, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          fetchUrl(res.headers.location).then(resolve, reject);
+          return;
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      })
+      .on("error", reject);
+  });
+}
 
 let client: HubClient;
 let joinToken: string;
@@ -84,6 +123,49 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       } catch (e) {
         return {
           content: [{ type: "text" as const, text: `Send failed: ${(e as Error).message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "radio_send_image",
+    "Send an image from a local file path or URL. Much faster than passing base64 via radio_over.",
+    {
+      to: z.string().describe("Recipient: @name or @all"),
+      source: z.string().describe("Image file path or URL (http/https)"),
+      message: z.string().optional().describe("Optional text message to accompany the image"),
+      channel: z.string().optional().describe("Channel to send to (default: #all)"),
+    },
+    async ({ to, source, message, channel }) => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          isError: true,
+        };
+      }
+      try {
+        let buf: Buffer;
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+          buf = await fetchUrl(source);
+        } else {
+          buf = fs.readFileSync(source);
+        }
+        const data = buf.toString("base64");
+        const mimeType = getMimeType(source);
+        const result = await client.send(currentToken, to, message ?? "", channel, { data, mimeType });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Image sent to ${result.to} in ${channel || "#all"} (id: ${result.id})`,
+            },
+          ],
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to send image: ${(e as Error).message}` }],
           isError: true,
         };
       }
