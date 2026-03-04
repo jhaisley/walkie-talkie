@@ -3,6 +3,7 @@ import type { Message } from "./types.js";
 import { isUserRegistered } from "./auth.js";
 import { deliverMessage } from "./polling.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
+import { dbSaveMessage } from "./db.js";
 
 const messageQueues = new Map<string, Message[]>();
 
@@ -42,6 +43,8 @@ export function routeMessage(
       timestamp: Date.now(),
     };
 
+    dbSaveMessage(message);
+
     // Deliver to all channel members except sender
     for (const user of members) {
       if (user !== from) {
@@ -69,6 +72,8 @@ export function routeMessage(
     channel,
     timestamp: Date.now(),
   };
+
+  dbSaveMessage(message);
 
   // Deliver to all channel members except sender
   for (const user of members) {

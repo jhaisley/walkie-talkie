@@ -1,6 +1,8 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 
+import type { Message } from "./types.js";
+
 export interface ChannelRow {
   name: string;
   created_by: string;
@@ -28,6 +30,22 @@ export function initDB(): void {
       user_name TEXT NOT NULL,
       PRIMARY KEY (channel, user_name)
     )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      "from" TEXT NOT NULL,
+      "to" TEXT NOT NULL,
+      content TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      timestamp INTEGER NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp
+    ON messages (channel, timestamp)
   `);
 
   // Seed #all if it doesn't exist
@@ -77,4 +95,43 @@ export function dbRemoveAllMembersOfChannel(channel: string): void {
 export function dbGetUserChannels(userName: string): string[] {
   const rows = db.prepare("SELECT channel FROM channel_members WHERE user_name = ?").all(userName) as { channel: string }[];
   return rows.map((r) => r.channel);
+}
+
+const ALL_CHANNEL_MAX = 200;
+
+export function dbSaveMessage(msg: Message): void {
+  db.prepare(
+    `INSERT INTO messages (id, "from", "to", content, channel, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(msg.id, msg.from, msg.to, msg.content, msg.channel, msg.timestamp);
+
+  if (msg.channel === "#all") {
+    dbPruneAllChannel();
+  }
+}
+
+export function dbGetChannelMessages(channel: string, limit = 50): Message[] {
+  return db.prepare(
+    `SELECT id, "from", "to", content, channel, timestamp FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?`,
+  ).all(channel, limit) as Message[];
+}
+
+export function dbGetRecentMessages(limit = 200): Message[] {
+  return db.prepare(
+    `SELECT id, "from", "to", content, channel, timestamp FROM messages ORDER BY timestamp ASC LIMIT ?`,
+  ).all(limit) as Message[];
+}
+
+export function dbDeleteChannelMessages(channel: string): void {
+  db.prepare("DELETE FROM messages WHERE channel = ?").run(channel);
+}
+
+function dbPruneAllChannel(): void {
+  const count = (db.prepare("SELECT COUNT(*) as cnt FROM messages WHERE channel = '#all'").get() as { cnt: number }).cnt;
+  if (count > ALL_CHANNEL_MAX) {
+    db.prepare(
+      `DELETE FROM messages WHERE channel = '#all' AND id NOT IN (
+        SELECT id FROM messages WHERE channel = '#all' ORDER BY timestamp DESC LIMIT ?
+      )`,
+    ).run(ALL_CHANNEL_MAX);
+  }
 }

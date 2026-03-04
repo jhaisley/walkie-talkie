@@ -1050,6 +1050,28 @@ return `<!DOCTYPE html>
       renderChannels();
     }).catch(() => {});
 
+    // Load message history from DB
+    fetch("/admin-channel-history", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          clearEmpty();
+          for (const msg of data.messages) {
+            const cls = msg.from === "operator" ? "message operator" : "message";
+            const channelTag = '<span class="channel-tag">' + (msg.channel || "#all") + '</span>';
+            addMessage(
+              '<span class="time">' + formatTime(msg.timestamp) + '</span>' +
+              channelTag +
+              '<span class="from">' + msg.from + '</span> ' +
+              '<span class="to">&rarr; ' + msg.to + '</span>' +
+              '<div class="content">' + msg.content.replace(/</g, "&lt;") + '</div>',
+              cls,
+              msg.channel || "#all"
+            );
+          }
+        }
+      }).catch(() => {});
+
     const es = new EventSource("/events");
 
     es.onmessage = (e) => {
