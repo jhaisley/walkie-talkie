@@ -125,6 +125,15 @@ return `<!DOCTYPE html>
     font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .channel-members {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 400;
   }
   .clear-btn, .filter-btn {
     font-family: var(--mono);
@@ -234,17 +243,18 @@ return `<!DOCTYPE html>
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .channel-badge {
+  .channel-unread {
+    font-family: var(--mono);
     font-size: 10px;
-    background: var(--bg-surface);
-    color: var(--text-tertiary);
+    background: var(--accent);
+    color: #fff;
     padding: 1px 6px;
     border-radius: 100px;
     flex-shrink: 0;
+    font-weight: 600;
   }
-  #channel-list li.active .channel-badge {
-    background: rgba(129,140,248,0.2);
-    color: var(--accent);
+  #channel-list li.active .channel-unread {
+    display: none;
   }
   .channel-del {
     background: transparent;
@@ -692,6 +702,7 @@ return `<!DOCTYPE html>
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
 
     let selectedChannel = "#all";
+    const unreadCounts = {}; // channel -> count
 
     function formatTime(ts) {
       return new Date(ts).toLocaleTimeString();
@@ -748,6 +759,7 @@ return `<!DOCTYPE html>
         const targetName = recipientTarget.slice(1);
         if (!users.has(targetName)) setRecipient("@all");
       }
+      updateChannelHeader();
     }
 
     function refreshChannels() {
@@ -757,6 +769,7 @@ return `<!DOCTYPE html>
           channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
         }
         renderChannels();
+        updateChannelHeader();
       }).catch(() => {});
     }
 
@@ -764,11 +777,12 @@ return `<!DOCTYPE html>
       channelListEl.innerHTML = "";
       for (const [name, info] of channels) {
         const li = document.createElement("li");
-        const badge = '<span class="channel-badge">' + (info.memberCount || 0) + '</span>';
+        const unread = unreadCounts[name] || 0;
+        const unreadBadge = unread > 0 ? '<span class="channel-unread">' + unread + '</span>' : '';
         if (name === "#all") {
-          li.innerHTML = '<span class="channel-name">' + name + '</span>' + badge;
+          li.innerHTML = '<span class="channel-name">' + name + '</span>' + unreadBadge;
         } else {
-          li.innerHTML = '<span class="channel-name">' + name + '</span>' + badge + '<button class="channel-del">x</button>';
+          li.innerHTML = '<span class="channel-name">' + name + '</span>' + unreadBadge + '<button class="channel-del">x</button>';
           li.querySelector(".channel-del").onclick = (e) => {
             e.stopPropagation();
             if (confirm("Delete " + name + "?")) deleteChannel(name);
@@ -780,10 +794,45 @@ return `<!DOCTYPE html>
       }
     }
 
+    function updateChannelHeader() {
+      if (!selectedChannel) {
+        channelHeaderEl.innerHTML = "";
+        return;
+      }
+      let membersHtml = "";
+      if (selectedChannel === "#all") {
+        const onlineUsers = [...users.keys()];
+        const count = onlineUsers.length;
+        const names = onlineUsers.join(", ");
+        membersHtml = count > 0
+          ? '<span class="channel-members">' + count + (count === 1 ? ' member' : ' members') + ': ' + names + '</span>'
+          : '<span class="channel-members">0 members</span>';
+      } else {
+        const chInfo = channels.get(selectedChannel);
+        const members = chInfo ? chInfo.members : [];
+        const count = members.length;
+        const names = members.join(", ");
+        membersHtml = count > 0
+          ? '<span class="channel-members">' + count + (count === 1 ? ' member' : ' members') + ': ' + names + '</span>'
+          : '<span class="channel-members">0 members</span>';
+      }
+      channelHeaderEl.innerHTML = '<span>' + selectedChannel + '</span> — ' + membersHtml;
+    }
+
+    function markChannelRead(channel) {
+      fetch("/admin-mark-read", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ channel }),
+      }).catch(() => {});
+      delete unreadCounts[channel];
+      renderChannels();
+    }
+
     function selectChannel(name) {
       selectedChannel = name;
-      channelHeaderEl.textContent = name ? name : "";
       channelTagEl.textContent = name || "#all";
+      updateChannelHeader();
       // Reset recipient if not a member of the new channel
       if (recipientTarget !== "@all" && name !== "#all") {
         const chInfo = channels.get(name);
@@ -792,7 +841,7 @@ return `<!DOCTYPE html>
           setRecipient("@all");
         }
       }
-      renderChannels();
+      markChannelRead(name);
       applyChannelFilter();
     }
 
@@ -1048,7 +1097,20 @@ return `<!DOCTYPE html>
         channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
       }
       renderChannels();
+      updateChannelHeader();
     }).catch(() => {});
+
+    // Load unread counts
+    fetch("/admin-unread-counts", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.counts) {
+          for (const [ch, cnt] of Object.entries(data.counts)) {
+            unreadCounts[ch] = cnt;
+          }
+          renderChannels();
+        }
+      }).catch(() => {});
 
     // Load message history from DB
     fetch("/admin-channel-history", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
@@ -1070,6 +1132,8 @@ return `<!DOCTYPE html>
             );
           }
         }
+        // Mark #all as read after loading history
+        markChannelRead("#all");
       }).catch(() => {});
 
     const es = new EventSource("/events");
@@ -1119,6 +1183,14 @@ return `<!DOCTYPE html>
           cls,
           ev.channel || "#all"
         );
+        // Unread tracking
+        const msgChannel = ev.channel || "#all";
+        if (msgChannel === selectedChannel) {
+          markChannelRead(msgChannel);
+        } else {
+          unreadCounts[msgChannel] = (unreadCounts[msgChannel] || 0) + 1;
+          renderChannels();
+        }
       } else if (ev.type === "channel_create") {
         refreshChannels();
         addMessage(
@@ -1143,8 +1215,14 @@ return `<!DOCTYPE html>
           "system channel-event leave",
           ev.channel
         );
+      } else if (ev.type === "read_update") {
+        if (ev.userName === "operator") {
+          delete unreadCounts[ev.channel];
+          renderChannels();
+        }
       } else if (ev.type === "channel_delete") {
         if (selectedChannel === ev.name) selectedChannel = "#all";
+        delete unreadCounts[ev.name];
         refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
