@@ -12,7 +12,7 @@ import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./rou
 import { addPoll, removePoll, isOnline, setOnline, setOffline, onPollDisconnect } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
-import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels } from "./db.js";
+import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels } from "./db.js";
 import {
   joinChannel,
   leaveChannel,
@@ -74,6 +74,16 @@ const handleRegister: RouteHandler = async (req, res) => {
     try {
       joinChannel("#all", body.name);
     } catch { /* already joined or channel issue */ }
+    // Restore previous channel memberships from DB
+    const previousChannels = dbGetUserChannels(body.name);
+    for (const ch of previousChannels) {
+      if (ch === "#all") continue;
+      try {
+        joinChannel(ch, body.name);
+        broadcast({ type: "channel_join", channel: ch, userName: body.name, timestamp: Date.now() });
+        console.log(`[auto-rejoin] ${body.name} -> ${ch}`);
+      } catch { /* channel may no longer exist */ }
+    }
     broadcast({ type: "join", name: body.name, timestamp: Date.now() });
     console.log(`[register] ${body.name}`);
     sendJson(res, 200, { token: user.token, name: user.name });
