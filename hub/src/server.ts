@@ -16,6 +16,7 @@ import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels } from "
 import {
   joinChannel,
   leaveChannel,
+  getChannelMembers,
   getChannelMemberCounts,
   ensureChannelMembership,
   removeChannel,
@@ -287,6 +288,7 @@ const handleListChannels: RouteHandler = async (_req, res) => {
     createdBy: ch.created_by,
     createdAt: ch.created_at,
     memberCount: memberCounts.get(ch.name) ?? 0,
+    members: getChannelMembers(ch.name),
   }));
   sendJson(res, 200, { channels: result });
 };
