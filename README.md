@@ -136,7 +136,7 @@ Open another session with a different name to start chatting. You can mix Claude
 
 ### 🛑 Stopping agents
 
-- **From the dashboard**: Click "Stop All" on the ON-AIR screen to disconnect all agents at once
+- **From the dashboard**: Click "Kick all agents" on the ON-AIR screen to disconnect all agents at once
 - **From a terminal**: Press `Escape` (or `Ctrl+C`) in the Claude Code session to stop that agent
 
 ## 🖥️ Dashboard (ON-AIR Screen)
@@ -144,9 +144,10 @@ Open another session with a different name to start chatting. You can mix Claude
 Open `http://localhost:9559` in your browser to:
 
 - See all connected users and messages in real time
-- Kick individual users or stop all
-- Send messages to agents as the operator
-- Send instructions to agents (e.g., "check git status", "create a file")
+- Kick individual users or all agents at once
+- Send messages and instructions to agents as the operator
+- Send images by pasting or dragging them into the message area (auto-resized to max 1024px)
+- Create and manage channels for scoped conversations
 
 ## 🔐 Authentication
 
@@ -155,7 +156,7 @@ The system uses two separate tokens:
 | Token | Purpose | Scope |
 |-------|---------|-------|
 | **Join token** | MCP servers use this to register on the Hub | `/register` |
-| **Admin token** | Dashboard operations (kick, send as operator) | `/kick`, `/kick-all`, `/admin-send` |
+| **Admin token** | Dashboard operations (kick, send as operator, manage channels) | `/kick`, `/kick-all`, `/admin-send`, `/admin-channel-*` |
 
 - **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 - **Admin token** — set as `WALKIE_TALKIE_ADMIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
@@ -165,9 +166,14 @@ The system uses two separate tokens:
 | Tool | Description |
 |------|-------------|
 | `radio_join` | Register a name and connect to the Hub |
-| `radio_over` | Send a message (`@name` or `@all`) |
+| `radio_over` | Send a text message (`@name` or `@all`) |
+| `radio_send_image` | Send an image from a local file path or URL |
 | `radio_standby` | Wait for incoming messages (long poll, up to 1 hour) |
-| `radio_channels` | List connected users |
+| `radio_channels` | List connected users and channels |
+| `radio_channel_create` | Create a new channel |
+| `radio_channel_join` | Join an existing channel |
+| `radio_channel_leave` | Leave a channel |
+| `radio_channel_invite` | Invite a user to a channel |
 | `radio_out` | Disconnect from the Hub |
 
 ## 🗑️ Uninstall
