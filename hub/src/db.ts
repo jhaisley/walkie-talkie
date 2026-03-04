@@ -48,6 +48,15 @@ export function initDB(): void {
     ON messages (channel, timestamp)
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS read_cursors (
+      user_name TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      last_read_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_name, channel)
+    )
+  `);
+
   // Seed #all if it doesn't exist
   const existing = db.prepare("SELECT name FROM channels WHERE name = ?").get("#all");
   if (!existing) {
@@ -123,6 +132,33 @@ export function dbGetRecentMessages(limit = 200): Message[] {
 
 export function dbDeleteChannelMessages(channel: string): void {
   db.prepare("DELETE FROM messages WHERE channel = ?").run(channel);
+}
+
+export function dbUpdateReadCursor(userName: string, channel: string, timestamp?: number): void {
+  const ts = timestamp ?? Date.now();
+  db.prepare(
+    `INSERT INTO read_cursors (user_name, channel, last_read_at) VALUES (?, ?, ?)
+     ON CONFLICT(user_name, channel) DO UPDATE SET last_read_at = MAX(last_read_at, excluded.last_read_at)`,
+  ).run(userName, channel, ts);
+}
+
+export function dbGetUnreadCounts(userName: string): Record<string, number> {
+  const rows = db.prepare(
+    `SELECT m.channel, COUNT(*) as cnt
+     FROM messages m
+     LEFT JOIN read_cursors rc ON rc.user_name = ? AND rc.channel = m.channel
+     WHERE m.timestamp > COALESCE(rc.last_read_at, 0)
+     GROUP BY m.channel`,
+  ).all(userName) as { channel: string; cnt: number }[];
+  const result: Record<string, number> = {};
+  for (const row of rows) {
+    result[row.channel] = row.cnt;
+  }
+  return result;
+}
+
+export function dbDeleteReadCursorsForChannel(channel: string): void {
+  db.prepare("DELETE FROM read_cursors WHERE channel = ?").run(channel);
 }
 
 function dbPruneAllChannel(): void {
