@@ -479,22 +479,84 @@ return `<!DOCTYPE html>
     gap: 8px;
     flex-shrink: 0;
   }
-  .input-bar select {
+  .input-bar-wrapper {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .input-tag {
     font-family: var(--mono);
     font-size: 12px;
-    padding: 8px 10px;
-    background: var(--bg-surface);
-    color: var(--text-primary);
+    font-weight: 500;
+    padding: 6px 10px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 1px;
+    user-select: none;
+  }
+  .input-tag.channel {
+    background: var(--yellow-soft);
+    color: var(--yellow);
+    border: 1px solid rgba(251,191,36,0.2);
+  }
+  .input-tag.recipient {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(129,140,248,0.2);
+    cursor: default;
+  }
+  .input-tag .tag-remove {
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+  }
+  .input-tag .tag-remove:hover {
+    opacity: 1;
+  }
+  .mention-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 6px;
+    background: var(--bg-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
-    outline: none;
+    min-width: 180px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    display: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-surface) transparent;
+  }
+  .mention-popup.visible {
+    display: block;
+    animation: slideIn 0.15s cubic-bezier(0.16,1,0.3,1);
+  }
+  .mention-item {
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-secondary);
     cursor: pointer;
-    flex-shrink: 0;
-    margin-bottom: 1px;
+    transition: background 0.1s ease;
   }
-  .input-bar select:focus {
-    border-color: var(--accent);
+  .mention-item:hover, .mention-item.active {
+    background: var(--accent-soft);
+    color: var(--accent);
   }
+  .mention-item:first-child { border-radius: 7px 7px 0 0; }
+  .mention-item:last-child { border-radius: 0 0 7px 7px; }
+  .mention-item:only-child { border-radius: 7px; }
   .input-bar textarea {
     flex: 1;
     font-family: var(--font);
@@ -606,13 +668,12 @@ return `<!DOCTYPE html>
       </div>
       <div id="typing-bar"></div>
       <div class="input-bar">
-        <select id="send-channel">
-          <option value="#all">#all</option>
-        </select>
-        <select id="send-to">
-          <option value="@all">@all</option>
-        </select>
-        <textarea id="send-input" placeholder="Send a message..." rows="1"></textarea>
+        <span class="input-tag channel" id="channel-tag">#all</span>
+        <span class="input-tag recipient" id="recipient-tag">@all</span>
+        <div class="input-bar-wrapper">
+          <div class="mention-popup" id="mention-popup"></div>
+          <textarea id="send-input" placeholder="Send a message... (type @ to mention)" rows="1"></textarea>
+        </div>
         <button class="send-btn" id="send-btn">Send</button>
       </div>
     </div>
@@ -626,7 +687,7 @@ return `<!DOCTYPE html>
     const statusEl = document.getElementById("status");
     const channelHeaderEl = document.getElementById("channel-header");
     const users = new Map(); // name -> online (boolean)
-    const channels = new Map(); // name -> { memberCount, createdBy }
+    const channels = new Map(); // name -> { memberCount, createdBy, members }
     const typingUsers = new Map(); // name -> timeoutId
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
 
@@ -682,14 +743,18 @@ return `<!DOCTYPE html>
         li.appendChild(btn);
         userListEl.appendChild(li);
       }
-      if (typeof updateSendTo === "function") updateSendTo();
+      // Reset recipient if the current target left
+      if (recipientTarget !== "@all") {
+        const targetName = recipientTarget.slice(1);
+        if (!users.has(targetName)) setRecipient("@all");
+      }
     }
 
     function refreshChannels() {
       fetch("/channels").then(r => r.json()).then(data => {
         channels.clear();
         for (const ch of data.channels) {
-          channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy });
+          channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
         }
         renderChannels();
       }).catch(() => {});
@@ -713,12 +778,20 @@ return `<!DOCTYPE html>
         li.onclick = () => selectChannel(name);
         channelListEl.appendChild(li);
       }
-      updateSendChannel();
     }
 
     function selectChannel(name) {
       selectedChannel = name;
       channelHeaderEl.textContent = name ? name : "";
+      channelTagEl.textContent = name || "#all";
+      // Reset recipient if not a member of the new channel
+      if (recipientTarget !== "@all" && name !== "#all") {
+        const chInfo = channels.get(name);
+        const members = chInfo ? chInfo.members : [];
+        if (members.length > 0 && !members.includes(recipientTarget.slice(1))) {
+          setRecipient("@all");
+        }
+      }
       renderChannels();
       applyChannelFilter();
     }
@@ -759,40 +832,113 @@ return `<!DOCTYPE html>
     };
 
     // Send from dashboard
-    const sendChannelEl = document.getElementById("send-channel");
-    const sendToEl = document.getElementById("send-to");
     const sendInputEl = document.getElementById("send-input");
     const sendBtnEl = document.getElementById("send-btn");
+    const channelTagEl = document.getElementById("channel-tag");
+    const recipientTagEl = document.getElementById("recipient-tag");
+    const mentionPopupEl = document.getElementById("mention-popup");
+    let recipientTarget = "@all";
+    let mentionActive = false;
+    let mentionIndex = 0;
+    let mentionFiltered = [];
 
-    function updateSendTo() {
-      const current = sendToEl.value;
-      sendToEl.innerHTML = '<option value="@all">@all</option>';
-      for (const [u] of users) {
-        const opt = document.createElement("option");
-        opt.value = "@" + u;
-        opt.textContent = "@" + u;
-        sendToEl.appendChild(opt);
-      }
-      if ([...sendToEl.options].some(o => o.value === current)) {
-        sendToEl.value = current;
-      }
+    function setRecipient(value) {
+      recipientTarget = value;
+      recipientTagEl.innerHTML = value === "@all"
+        ? "@all"
+        : value + ' <span class="tag-remove">&times;</span>';
     }
 
-    function updateSendChannel() {
-      const current = sendChannelEl.value;
-      sendChannelEl.innerHTML = "";
-      for (const [name] of channels) {
-        const opt = document.createElement("option");
-        opt.value = name;
-        opt.textContent = name;
-        sendChannelEl.appendChild(opt);
+    recipientTagEl.addEventListener("click", (e) => {
+      if (e.target.classList.contains("tag-remove")) {
+        setRecipient("@all");
       }
-      if ([...sendChannelEl.options].some(o => o.value === current)) {
-        sendChannelEl.value = current;
+    });
+
+    let popupMode = ""; // "mention" or "channel"
+
+    function getPopupQuery() {
+      const val = sendInputEl.value;
+      const pos = sendInputEl.selectionStart;
+      const before = val.slice(0, pos);
+      const mentionMatch = before.match(/@([\\w-]*)$/);
+      if (mentionMatch) return { mode: "mention", query: mentionMatch[1] };
+      const channelMatch = before.match(/#([\\w-]*)$/);
+      if (channelMatch) return { mode: "channel", query: channelMatch[1] };
+      return null;
+    }
+
+    function getMentionCandidates() {
+      const chInfo = channels.get(selectedChannel);
+      const memberList = chInfo ? chInfo.members : [];
+      const candidates = [];
+      for (const [u] of users) {
+        if (selectedChannel !== "#all" && memberList.length > 0 && !memberList.includes(u)) continue;
+        candidates.push(u);
       }
-      if (selectedChannel && [...sendChannelEl.options].some(o => o.value === selectedChannel)) {
-        sendChannelEl.value = selectedChannel;
+      return candidates;
+    }
+
+    function getChannelCandidates() {
+      return [...channels.keys()];
+    }
+
+    function showPopup() {
+      const result = getPopupQuery();
+      if (!result) { hidePopup(); return; }
+      const candidates = result.mode === "mention" ? getMentionCandidates() : getChannelCandidates();
+      mentionFiltered = candidates.filter(c => c.toLowerCase().startsWith((result.mode === "channel" ? "#" : "") + result.query.toLowerCase()));
+      if (result.mode === "channel") mentionFiltered = mentionFiltered.map(c => c.replace(/^#/, ""));
+      if (mentionFiltered.length === 0) { hidePopup(); return; }
+      mentionIndex = 0;
+      mentionActive = true;
+      popupMode = result.mode;
+      renderPopup();
+    }
+
+    function renderPopup() {
+      const prefix = popupMode === "channel" ? "#" : "@";
+      mentionPopupEl.innerHTML = "";
+      mentionFiltered.forEach((name, i) => {
+        const div = document.createElement("div");
+        div.className = "mention-item" + (i === mentionIndex ? " active" : "");
+        div.textContent = prefix + name;
+        div.addEventListener("mouseenter", () => {
+          mentionIndex = i;
+          mentionPopupEl.querySelectorAll(".mention-item").forEach((el, j) => {
+            el.classList.toggle("active", j === i);
+          });
+        });
+        div.addEventListener("mousedown", (e) => { e.preventDefault(); selectPopupItem(name); });
+        mentionPopupEl.appendChild(div);
+      });
+      mentionPopupEl.classList.add("visible");
+    }
+
+    function hidePopup() {
+      mentionActive = false;
+      mentionFiltered = [];
+      popupMode = "";
+      mentionPopupEl.classList.remove("visible");
+    }
+
+    function selectPopupItem(name) {
+      const val = sendInputEl.value;
+      const pos = sendInputEl.selectionStart;
+      const before = val.slice(0, pos);
+      const after = val.slice(pos);
+      if (popupMode === "channel") {
+        const replaced = before.replace(/#[\\w-]*$/, "#" + name + " ");
+        sendInputEl.value = replaced + after;
+        sendInputEl.selectionStart = sendInputEl.selectionEnd = replaced.length;
+      } else {
+        const replaced = before.replace(/@[\\w-]*$/, "");
+        sendInputEl.value = replaced + after;
+        sendInputEl.selectionStart = sendInputEl.selectionEnd = replaced.length;
+        setRecipient("@" + name);
       }
+      hidePopup();
+      sendInputEl.focus();
     }
 
     function expectReply(name) {
@@ -812,8 +958,8 @@ return `<!DOCTYPE html>
     function sendMessage() {
       const content = sendInputEl.value.trim();
       if (!content) return;
-      const channel = sendChannelEl.value || "#all";
-      const target = sendToEl.value;
+      const channel = selectedChannel;
+      const target = recipientTarget;
       fetch("/admin-send", {
         method: "POST",
         headers: adminHeaders,
@@ -835,14 +981,25 @@ return `<!DOCTYPE html>
     sendBtnEl.onclick = sendMessage;
 
     sendInputEl.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.isComposing) return;
-      if (!e.shiftKey && !e.metaKey) { e.preventDefault(); sendMessage(); }
+      if (mentionActive && !e.isComposing) {
+        if (e.key === "ArrowDown") { e.preventDefault(); mentionIndex = (mentionIndex + 1) % mentionFiltered.length; renderPopup(); return; }
+        if (e.key === "ArrowUp") { e.preventDefault(); mentionIndex = (mentionIndex - 1 + mentionFiltered.length) % mentionFiltered.length; renderPopup(); return; }
+        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); selectPopupItem(mentionFiltered[mentionIndex]); return; }
+        if (e.key === "Escape") { e.preventDefault(); hidePopup(); return; }
+      }
+      if (e.isComposing) return;
+      if (e.key === "Enter" && !e.shiftKey && !e.metaKey) { e.preventDefault(); sendMessage(); }
     });
 
     sendInputEl.addEventListener("input", () => {
       sendInputEl.style.height = "auto";
       sendInputEl.style.height = Math.min(sendInputEl.scrollHeight, 120) + "px";
       sendInputEl.style.overflowY = sendInputEl.scrollHeight > 120 ? "auto" : "hidden";
+      showPopup();
+    });
+
+    sendInputEl.addEventListener("blur", () => {
+      setTimeout(() => hidePopup(), 150);
     });
 
     // Filter toggle
@@ -888,7 +1045,7 @@ return `<!DOCTYPE html>
 
     fetch("/channels").then(r => r.json()).then(data => {
       for (const ch of data.channels) {
-        channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy });
+        channels.set(ch.name, { memberCount: ch.memberCount, createdBy: ch.createdBy, members: ch.members || [] });
       }
       renderChannels();
     }).catch(() => {});
