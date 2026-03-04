@@ -12,7 +12,7 @@ import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./rou
 import { addPoll, removePoll, isOnline, setOnline, setOffline, onPollDisconnect } from "./polling.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { getDashboardHTML } from "./dashboard.js";
-import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels, dbDeleteChannelMessages, dbGetChannelMessages, dbGetRecentMessages } from "./db.js";
+import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels, dbDeleteChannelMessages, dbGetChannelMessages, dbGetRecentMessages, dbUpdateReadCursor, dbGetUnreadCounts, dbDeleteReadCursorsForChannel } from "./db.js";
 import {
   joinChannel,
   leaveChannel,
@@ -100,6 +100,8 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   }
   // Typing indicator: broadcast typing event without routing to chat log
   if (body.content === "TYPING") {
+    const channel = body.channel || "#all";
+    dbUpdateReadCursor(userName!, channel);
     broadcast({ type: "typing", name: userName!, timestamp: Date.now() });
     console.log(`[typing] ${userName}`);
     return sendJson(res, 200, { id: "typing", to: body.to });
@@ -364,10 +366,27 @@ const handleAdminChannelDelete: RouteHandler = async (req, res) => {
   }
   dbDeleteChannel(body.name);
   dbDeleteChannelMessages(body.name);
+  dbDeleteReadCursorsForChannel(body.name);
   removeChannel(body.name);
   broadcast({ type: "channel_delete", name: body.name, timestamp: Date.now() });
   console.log(`[admin-channel-delete] ${body.name}`);
   sendJson(res, 200, { ok: true, channel: body.name });
+};
+
+const handleAdminMarkRead: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { channel?: string; timestamp?: number };
+  if (!body.channel || typeof body.channel !== "string") {
+    return sendError(res, 400, "Missing or invalid 'channel' field");
+  }
+  const ts = body.timestamp ?? Date.now();
+  dbUpdateReadCursor("operator", body.channel, ts);
+  broadcast({ type: "read_update", userName: "operator", channel: body.channel, timestamp: ts });
+  sendJson(res, 200, { ok: true });
+};
+
+const handleAdminUnreadCounts: RouteHandler = async (_req, res) => {
+  const counts = dbGetUnreadCounts("operator");
+  sendJson(res, 200, { counts });
 };
 
 const publicRoutes: Record<string, { method: string; handler: RouteHandler }> = {
@@ -386,6 +405,8 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/admin-channel-create": { method: "POST", handler: handleAdminChannelCreate },
   "/admin-channel-delete": { method: "POST", handler: handleAdminChannelDelete },
   "/admin-channel-history": { method: "GET", handler: handleAdminChannelHistory },
+  "/admin-mark-read": { method: "POST", handler: handleAdminMarkRead },
+  "/admin-unread-counts": { method: "GET", handler: handleAdminUnreadCounts },
 };
 
 const protectedRoutes: Record<string, { method: string; handler: RouteHandler }> = {
