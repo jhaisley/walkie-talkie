@@ -35,9 +35,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Registration failed: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Registration failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -55,9 +53,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ to, message, channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -73,9 +69,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Send failed: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Send failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -89,9 +83,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -99,9 +91,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         const result = await client.poll(currentToken);
         if (!result || result.messages.length === 0) {
           return {
-            content: [
-              { type: "text" as const, text: "No new messages (poll timed out). Try again." },
-            ],
+            content: [{ type: "text" as const, text: "No new messages (poll timed out). Try again." }],
           };
         }
         // Check for kill signal from operator
@@ -111,13 +101,19 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           currentName = null;
           return {
             content: [
-              { type: "text" as const, text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." },
+              {
+                type: "text" as const,
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+              },
             ],
             isError: true,
           };
         }
         const formatted = result.messages
-          .map((m) => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`)
+          .map(
+            (m) =>
+              `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}`,
+          )
           .join("\n");
         return {
           content: [{ type: "text" as const, text: formatted }],
@@ -129,15 +125,16 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           currentName = null;
           return {
             content: [
-              { type: "text" as const, text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately." },
+              {
+                type: "text" as const,
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+              },
             ],
             isError: true,
           };
         }
         return {
-          content: [
-            { type: "text" as const, text: `Poll failed: ${msg}` },
-          ],
+          content: [{ type: "text" as const, text: `Poll failed: ${msg}` }],
           isError: true,
         };
       }
@@ -151,23 +148,17 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async () => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
       try {
-        const [users, channels] = await Promise.all([
-          client.users(currentToken),
-          client.listChannels(currentToken),
-        ]);
-        const userText = users.length > 0
-          ? `Connected users: ${users.join(", ")}`
-          : "No users connected.";
-        const channelText = channels.length > 0
-          ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}`
-          : "No channels.";
+        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
+        const userText = users.length > 0 ? `Connected users: ${users.join(", ")}` : "No users connected.";
+        const channelText =
+          channels.length > 0
+            ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}`
+            : "No channels.";
         return {
           content: [
             {
@@ -178,9 +169,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -194,9 +183,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ name }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -212,9 +199,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to create channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to create channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -228,9 +213,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -246,9 +229,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to join channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to join channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -262,9 +243,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -280,9 +259,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to leave channel: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to leave channel: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -299,9 +276,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     async ({ channel, user }) => {
       if (!currentToken) {
         return {
-          content: [
-            { type: "text" as const, text: "Not on the air. Use radio_join first." },
-          ],
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
           isError: true,
         };
       }
@@ -317,47 +292,34 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       } catch (e) {
         return {
-          content: [
-            { type: "text" as const, text: `Failed to invite: ${(e as Error).message}` },
-          ],
+          content: [{ type: "text" as const, text: `Failed to invite: ${(e as Error).message}` }],
           isError: true,
         };
       }
     },
   );
 
-  server.tool(
-    "radio_out",
-    "Sign off and disconnect from the Walkie-Talkie hub. Over and out.",
-    {},
-    async () => {
-      if (!currentToken) {
-        return {
-          content: [
-            { type: "text" as const, text: "Not registered." },
-          ],
-        };
-      }
-      try {
-        await client.unregister(currentToken);
-        const name = currentName;
-        currentToken = null;
-        currentName = null;
-        return {
-          content: [
-            { type: "text" as const, text: `Unregistered "${name}". Disconnected from hub.` },
-          ],
-        };
-      } catch (e) {
-        return {
-          content: [
-            { type: "text" as const, text: `Unregister failed: ${(e as Error).message}` },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+  server.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
+    if (!currentToken) {
+      return {
+        content: [{ type: "text" as const, text: "Not registered." }],
+      };
+    }
+    try {
+      await client.unregister(currentToken);
+      const name = currentName;
+      currentToken = null;
+      currentName = null;
+      return {
+        content: [{ type: "text" as const, text: `Unregistered "${name}". Disconnected from hub.` }],
+      };
+    } catch (e) {
+      return {
+        content: [{ type: "text" as const, text: `Unregister failed: ${(e as Error).message}` }],
+        isError: true,
+      };
+    }
+  });
 
   return server;
 }

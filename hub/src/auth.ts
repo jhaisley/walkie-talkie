@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
-import type { User } from "./types.js";
 import { removeUserFromAllChannels } from "./channels.js";
+import type { User } from "./types.js";
 
 const users = new Map<string, User>();
 const tokenToName = new Map<string, string>();
@@ -43,4 +43,9 @@ export function getRegisteredUsers(): string[] {
 
 export function isUserRegistered(name: string): boolean {
   return users.has(name);
+}
+
+export function resetAuthState(): void {
+  users.clear();
+  tokenToName.clear();
 }

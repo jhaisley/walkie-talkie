@@ -28,7 +28,7 @@ export class HubClient {
 
       const headers: Record<string, string> = {};
       if (options.token) {
-        headers["Authorization"] = `Bearer ${options.token}`;
+        headers.Authorization = `Bearer ${options.token}`;
       }
 
       let bodyStr: string | undefined;
@@ -100,12 +100,7 @@ export class HubClient {
     });
   }
 
-  async send(
-    token: string,
-    to: string,
-    content: string,
-    channel?: string,
-  ): Promise<{ id: string; to: string }> {
+  async send(token: string, to: string, content: string, channel?: string): Promise<{ id: string; to: string }> {
     const body: { to: string; content: string; channel?: string } = { to, content };
     if (channel) body.channel = channel;
     const res = await this.request<{ id: string; to: string }>({
@@ -120,9 +115,9 @@ export class HubClient {
     return res.data;
   }
 
-  async poll(
-    token: string,
-  ): Promise<{ messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }> } | null> {
+  async poll(token: string): Promise<{
+    messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }>;
+  } | null> {
     const res = await this.request<{
       messages: Array<{ id: string; from: string; to: string; content: string; channel: string; timestamp: number }>;
     }>({

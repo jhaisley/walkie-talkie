@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { PendingPoll } from "./types.js";
 import { drainQueue } from "./router.js";
+import type { PendingPoll } from "./types.js";
 
 const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
 const pendingPolls = new Map<string, PendingPoll>();

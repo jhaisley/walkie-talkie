@@ -1,32 +1,40 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
-  registerUser,
-  unregisterUser,
   authenticateRequest,
   getRegisteredUsers,
   getUserToken,
   isUserRegistered,
+  registerUser,
+  unregisterUser,
 } from "./auth.js";
-import { routeMessage, ensureQueue, enqueueAndDeliver, removeQueue } from "./router.js";
-import { addPoll, removePoll, isOnline, setOnline, setOffline, onPollDisconnect } from "./polling.js";
-import { addSSEClient, broadcast } from "./events.js";
-import { getDashboardHTML } from "./dashboard.js";
-import { dbCreateChannel, dbDeleteChannel, dbGetChannel, dbListChannels, dbGetUserChannels, dbDeleteChannelMessages, dbGetChannelMessages, dbGetRecentMessages, dbUpdateReadCursor, dbGetUnreadCounts, dbDeleteReadCursorsForChannel } from "./db.js";
 import {
+  ensureChannelMembership,
+  getChannelMemberCounts,
+  getChannelMembers,
+  isChannelMember,
   joinChannel,
   leaveChannel,
-  getChannelMembers,
-  getChannelMemberCounts,
-  ensureChannelMembership,
   removeChannel,
-  isChannelMember,
 } from "./channels.js";
-import type {
-  RegisterRequest,
-  SendRequest,
-  RouteHandler,
-} from "./types.js";
+import { getDashboardHTML } from "./dashboard.js";
+import {
+  dbCreateChannel,
+  dbDeleteChannel,
+  dbDeleteChannelMessages,
+  dbDeleteReadCursorsForChannel,
+  dbGetChannel,
+  dbGetChannelMessages,
+  dbGetRecentMessages,
+  dbGetUnreadCounts,
+  dbGetUserChannels,
+  dbListChannels,
+  dbUpdateReadCursor,
+} from "./db.js";
+import { addSSEClient, broadcast } from "./events.js";
+import { addPoll, isOnline, onPollDisconnect, removePoll, setOffline, setOnline } from "./polling.js";
+import { enqueueAndDeliver, ensureQueue, removeQueue, routeMessage } from "./router.js";
+import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -74,7 +82,9 @@ const handleRegister: RouteHandler = async (req, res) => {
     // Auto-join #all
     try {
       joinChannel("#all", body.name);
-    } catch { /* already joined or channel issue */ }
+    } catch {
+      /* already joined or channel issue */
+    }
     // Restore previous channel memberships from DB
     const previousChannels = dbGetUserChannels(body.name);
     for (const ch of previousChannels) {
@@ -83,7 +93,9 @@ const handleRegister: RouteHandler = async (req, res) => {
         joinChannel(ch, body.name);
         broadcast({ type: "channel_join", channel: ch, userName: body.name, timestamp: Date.now() });
         console.log(`[auto-rejoin] ${body.name} -> ${ch}`);
-      } catch { /* channel may no longer exist */ }
+      } catch {
+        /* channel may no longer exist */
+      }
     }
     broadcast({ type: "join", name: body.name, timestamp: Date.now() });
     console.log(`[register] ${body.name}`);
@@ -109,7 +121,14 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   const channel = body.channel || "#all";
   try {
     const message = routeMessage(userName!, body.to, body.content, channel);
-    broadcast({ type: "message", from: message.from, to: message.to, content: message.content, channel: message.channel, timestamp: message.timestamp });
+    broadcast({
+      type: "message",
+      from: message.from,
+      to: message.to,
+      content: message.content,
+      channel: message.channel,
+      timestamp: message.timestamp,
+    });
     console.log(`[send] ${userName} -> ${body.to} (${channel}): ${body.content}`);
     sendJson(res, 200, { id: message.id, to: message.to });
   } catch (e) {
@@ -176,7 +195,7 @@ const handleKick: RouteHandler = async (req, res) => {
 };
 
 const handleKickAll: RouteHandler = async (_req, res) => {
-  const agents = [...getRegisteredUsers()].filter(name => name !== "operator");
+  const agents = [...getRegisteredUsers()].filter((name) => name !== "operator");
   for (const name of agents) {
     kickUser(name);
   }
@@ -197,18 +216,31 @@ const handleAdminSend: RouteHandler = async (req, res) => {
       ensureQueue(from);
       try {
         joinChannel("#all", from);
-      } catch { /* already joined */ }
+      } catch {
+        /* already joined */
+      }
       broadcast({ type: "join", name: from, timestamp: Date.now() });
       console.log(`[auto-register] ${from}`);
-    } catch { /* already registered */ }
+    } catch {
+      /* already registered */
+    }
   }
   // Ensure operator is in target channel
   try {
     joinChannel(channel, from);
-  } catch { /* already joined or channel issue */ }
+  } catch {
+    /* already joined or channel issue */
+  }
   try {
     const message = routeMessage(from, body.to, body.content, channel);
-    broadcast({ type: "message", from: message.from, to: message.to, content: message.content, channel: message.channel, timestamp: message.timestamp });
+    broadcast({
+      type: "message",
+      from: message.from,
+      to: message.to,
+      content: message.content,
+      channel: message.channel,
+      timestamp: message.timestamp,
+    });
     console.log(`[admin-send] ${from} -> ${body.to} (${channel}): ${body.content}`);
     sendJson(res, 200, { id: message.id, to: message.to });
   } catch (e) {
@@ -430,7 +462,7 @@ function authenticateBearer(req: IncomingMessage, expected: string): boolean {
 const STALE_GRACE_MS = 30_000; // 30 seconds before auto-unregister
 const staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function createHubServer(port: number, adminToken: string, joinToken: string): void {
+export function createHubServer(port: number, adminToken: string, joinToken: string): import("node:http").Server {
   // When a poll connection drops unexpectedly, mark user offline and start grace timer
   onPollDisconnect((userName) => {
     if (!isUserRegistered(userName)) return;
@@ -442,17 +474,20 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
     const existing = staleTimers.get(userName);
     if (existing) clearTimeout(existing);
 
-    staleTimers.set(userName, setTimeout(() => {
-      staleTimers.delete(userName);
-      if (isUserRegistered(userName) && !isOnline(userName)) {
-        removePoll(userName);
-        removeQueue(userName);
-        setOffline(userName);
-        unregisterUser(userName);
-        broadcast({ type: "leave", name: userName, timestamp: Date.now() });
-        console.log(`[auto-unregister] ${userName} (stale)`);
-      }
-    }, STALE_GRACE_MS));
+    staleTimers.set(
+      userName,
+      setTimeout(() => {
+        staleTimers.delete(userName);
+        if (isUserRegistered(userName) && !isOnline(userName)) {
+          removePoll(userName);
+          removeQueue(userName);
+          setOffline(userName);
+          unregisterUser(userName);
+          broadcast({ type: "leave", name: userName, timestamp: Date.now() });
+          console.log(`[auto-unregister] ${userName} (stale)`);
+        }
+      }, STALE_GRACE_MS),
+    );
   });
 
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
@@ -547,4 +582,5 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
   server.listen(port, "127.0.0.1", () => {
     console.log(`Walkie-Talkie Hub listening on http://localhost:${port}`);
   });
+  return server;
 }

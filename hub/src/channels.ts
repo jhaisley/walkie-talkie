@@ -1,4 +1,4 @@
-import { dbGetChannel, dbAddChannelMember, dbRemoveChannelMember, dbRemoveAllMembersOfChannel } from "./db.js";
+import { dbAddChannelMember, dbGetChannel, dbRemoveAllMembersOfChannel, dbRemoveChannelMember } from "./db.js";
 
 const channelMembers = new Map<string, Set<string>>();
 
@@ -73,4 +73,8 @@ export function ensureChannelMembership(channel: string): void {
 export function removeChannel(channel: string): void {
   channelMembers.delete(channel);
   dbRemoveAllMembersOfChannel(channel);
+}
+
+export function resetChannelState(): void {
+  channelMembers.clear();
 }
