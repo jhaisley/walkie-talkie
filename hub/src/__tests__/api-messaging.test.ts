@@ -55,7 +55,7 @@ describe("POST /send", () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ to: "@all", content: "TYPING" }),
+      body: JSON.stringify({ to: "@all", content: "TYPING", channel: "#general" }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string };
