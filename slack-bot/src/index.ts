@@ -6,18 +6,18 @@ const { App } = bolt;
 // Configuration
 // ---------------------------------------------------------------------------
 
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
-const SLACK_APP_TOKEN = process.env.SLACK_APP_TOKEN;
+const SLACK_BOT_TOKEN = process.env.WALKIE_TALKIE_SLACK_BOT_TOKEN;
+const SLACK_APP_TOKEN = process.env.WALKIE_TALKIE_SLACK_APP_TOKEN;
 const HUB_URL = process.env.WALKIE_TALKIE_HUB_URL || "http://localhost:9559";
 const JOIN_TOKEN = process.env.WALKIE_TALKIE_JOIN_TOKEN;
 const BOT_NAME = "slack";
 
 if (!SLACK_BOT_TOKEN) {
-  console.error("SLACK_BOT_TOKEN environment variable is required");
+  console.error("WALKIE_TALKIE_SLACK_BOT_TOKEN environment variable is required");
   process.exit(1);
 }
 if (!SLACK_APP_TOKEN) {
-  console.error("SLACK_APP_TOKEN environment variable is required");
+  console.error("WALKIE_TALKIE_SLACK_APP_TOKEN environment variable is required");
   process.exit(1);
 }
 if (!JOIN_TOKEN) {
@@ -30,23 +30,32 @@ if (!JOIN_TOKEN) {
 // ---------------------------------------------------------------------------
 
 let hubToken: string | null = null;
+let botUserId: string | null = null;
 
 async function hubRegister(): Promise<void> {
-  const res = await fetch(`${HUB_URL}/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${JOIN_TOKEN}`,
-    },
-    body: JSON.stringify({ name: BOT_NAME }),
-  });
-  if (!res.ok) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`${HUB_URL}/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${JOIN_TOKEN}`,
+      },
+      body: JSON.stringify({ name: BOT_NAME, oldToken: hubToken }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { token: string; name: string };
+      hubToken = data.token;
+      console.log(`[hub] Registered as "${data.name}"`);
+      return;
+    }
     const err = (await res.json()) as { error: string };
+    if (res.status === 409 && attempt < 2) {
+      console.log("[hub] Already registered, waiting for grace period to expire...");
+      await new Promise((resolve) => setTimeout(resolve, 35_000));
+      continue;
+    }
     throw new Error(`Failed to register on Hub: ${err.error}`);
   }
-  const data = (await res.json()) as { token: string; name: string };
-  hubToken = data.token;
-  console.log(`[hub] Registered as "${data.name}"`);
 }
 
 async function hubSend(to: string, content: string): Promise<void> {
@@ -100,6 +109,9 @@ interface PendingReply {
 // When we send to @all, we use "*" as the key
 const pendingReplies = new Map<string, PendingReply>();
 
+// Map: Slack thread_ts -> last agent name used in that thread
+const threadAgents = new Map<string, string>();
+
 // ---------------------------------------------------------------------------
 // Poll loop — receives messages from Hub and posts to Slack
 // ---------------------------------------------------------------------------
@@ -134,14 +146,31 @@ async function pollLoop(): Promise<void> {
       }
     } catch (e) {
       console.error("[poll] Error:", (e as Error).message);
-      // Wait before retrying on error
+      // Re-register and retry
+      try {
+        await hubRegister();
+      } catch (regErr) {
+        console.error("[poll] Re-register failed:", (regErr as Error).message);
+      }
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Parse mention text: "@wt @alice do something" or "@wt do something"
+// Slack mention handling
+// ---------------------------------------------------------------------------
+
+function stripBotMention(text: string): string {
+  // Remove only the bot's own mention, keep all other <@USER> mentions intact
+  if (botUserId) {
+    return text.replace(new RegExp(`<@${botUserId}>`, "g"), "").trim();
+  }
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// Parse mention text: "@walkie-talkie @alice do something" or "@walkie-talkie do something"
 // ---------------------------------------------------------------------------
 
 function parseCommand(text: string): { to: string; content: string } {
@@ -168,13 +197,12 @@ async function main(): Promise<void> {
     socketMode: true,
   });
 
-  // Handle mentions: @wt <message>
+  // Handle mentions: @walkie-talkie <message>
   slackApp.event("app_mention", async ({ event, say }) => {
-    // Remove the bot mention from the text (e.g., "<@U12345> @alice do something" -> "@alice do something")
-    const rawText = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
+    const rawText = stripBotMention(event.text);
 
     if (!rawText) {
-      await say({ text: "Usage: `@wt @agent-name message` or `@wt message`", thread_ts: event.ts });
+      await say({ text: "Usage: `@walkie-talkie @agent-name message` or `@walkie-talkie message`", thread_ts: event.ts });
       return;
     }
 
@@ -183,12 +211,15 @@ async function main(): Promise<void> {
     // Post "thinking..." in thread
     const thinkingRes = await say({ text: `_thinking... (sending to ${to})_`, thread_ts: event.ts });
 
-    // Track pending reply
+    // Track pending reply and remember agent for this thread
     const agentKey = to === "@all" ? "*" : to.slice(1);
     pendingReplies.set(agentKey, {
       slackChannel: event.channel,
       threadTs: event.ts,
     });
+    if (to !== "@all") {
+      threadAgents.set(event.ts, to);
+    }
 
     // Send to Hub
     try {
@@ -207,6 +238,52 @@ async function main(): Promise<void> {
       pendingReplies.delete(agentKey);
     }
   });
+
+  // Handle thread replies (without @mention)
+  slackApp.message(async ({ message, say }) => {
+    const msg = message as unknown as Record<string, unknown>;
+    // Only handle thread replies
+    if (!msg.thread_ts) return;
+    // Ignore bot's own messages
+    if (msg.bot_id) return;
+
+    const text = typeof msg.text === "string" ? msg.text : "";
+    const rawText = stripBotMention(text);
+    if (!rawText) return;
+
+    const threadTs = msg.thread_ts as string;
+    const channel = msg.channel as string;
+
+    // If no target specified, use the last agent from this thread
+    let { to, content } = parseCommand(rawText);
+    if (to === "@all" && threadAgents.has(threadTs)) {
+      to = threadAgents.get(threadTs)!;
+      content = rawText;
+    }
+
+    // Track pending reply for the thread
+    const agentKey = to === "@all" ? "*" : to.slice(1);
+    if (to !== "@all") {
+      threadAgents.set(threadTs, to);
+    }
+    pendingReplies.set(agentKey, {
+      slackChannel: channel,
+      threadTs,
+    });
+
+    try {
+      await hubSend(to, `[from Slack] ${content}`);
+      console.log(`[slack:thread] ${to}: ${content.slice(0, 100)}`);
+    } catch (e) {
+      await say({ text: `Error: ${(e as Error).message}`, thread_ts: threadTs });
+      pendingReplies.delete(agentKey);
+    }
+  });
+
+  // Get bot's own user ID
+  const authResult = await slackApp.client.auth.test();
+  botUserId = authResult.user_id ?? null;
+  console.log(`[slack] Bot user ID: ${botUserId}`);
 
   // Register on Hub
   await hubRegister();
