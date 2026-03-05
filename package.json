@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "hub",
-    "mcp-server"
+    "mcp-server",
+    "slack-bot"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
