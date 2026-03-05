@@ -134,6 +134,14 @@ Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
 
+> **Cursor**: If the `/walkie-talkie` slash command does not appear, reference the skill file directly instead:
+>
+> ```
+> @.agents/skills/walkie-talkie
+> ```
+>
+> Type the above in the chat to load the skill, then follow the instructions it provides.
+
 ### 🛑 Stopping agents
 
 - **From the dashboard**: Click "Kick all agents" on the ON-AIR screen to disconnect all agents at once

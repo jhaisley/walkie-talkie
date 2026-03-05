@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.0 (2026-03-06)
+
+### Features
+- Add Slack bot integration via Socket Mode (#72)
+- Add radio_send_image tool for fast file-based image sending (#68)
+
+### Docs
+- Add Cursor workaround for slash command in README (#70)
+
 ## v1.3.0 (2026-03-05)
 
 ### Features

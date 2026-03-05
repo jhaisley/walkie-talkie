@@ -1,11 +1,12 @@
 {
   "name": "walkie-talkie",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "workspaces": [
     "hub",
-    "mcp-server"
+    "mcp-server",
+    "slack-bot"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
