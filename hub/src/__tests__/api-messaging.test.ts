@@ -88,6 +88,45 @@ describe("POST /send", () => {
     expect(res.status).toBe(404);
   });
 
+  it("should send a message with image", async () => {
+    const token = await registerUser(ctx, "img-sender");
+    await registerUser(ctx, "img-receiver");
+
+    const res = await fetch(`${ctx.baseUrl}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: "@all",
+        content: "check this image",
+        image: { data: "iVBORw0KGgo=", mimeType: "image/png" },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; to: string };
+    expect(body.id).toBeTruthy();
+  });
+
+  it("should accept image-only message without content", async () => {
+    const token = await registerUser(ctx, "imgonly-sender");
+    await registerUser(ctx, "imgonly-receiver");
+
+    const res = await fetch(`${ctx.baseUrl}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: "@all",
+        image: { data: "iVBORw0KGgo=", mimeType: "image/png" },
+      }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it("should reject unauthorized send", async () => {
     const res = await fetch(`${ctx.baseUrl}/send`, {
       method: "POST",
