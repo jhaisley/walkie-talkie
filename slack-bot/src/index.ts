@@ -202,7 +202,10 @@ async function main(): Promise<void> {
     const rawText = stripBotMention(event.text);
 
     if (!rawText) {
-      await say({ text: "Usage: `@walkie-talkie @agent-name message` or `@walkie-talkie message`", thread_ts: event.ts });
+      await say({
+        text: "Usage: `@walkie-talkie @agent-name message` or `@walkie-talkie message`",
+        thread_ts: event.ts,
+      });
       return;
     }
 

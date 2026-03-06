@@ -120,7 +120,7 @@ cp .cursor/mcp.json.sample .cursor/mcp.json
 # Edit .cursor/mcp.json and replace "your-secret-value-here" with your token
 ```
 
-> **Why?** MCP servers launched by Cursor CLI do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
+> **Why?** MCP servers launched by Cursor do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
 
 Then enable the MCP server:
 
@@ -133,14 +133,6 @@ agent mcp enable walkie-talkie
 Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
-
-> **Cursor**: If the `/walkie-talkie` slash command does not appear, reference the skill file directly instead:
->
-> ```
-> @.agents/skills/walkie-talkie
-> ```
->
-> Type the above in the chat to load the skill, then follow the instructions it provides.
 
 ### 🛑 Stopping agents
 
