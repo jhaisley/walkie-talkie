@@ -1,0 +1,117 @@
+#!/bin/sh
+# radio-wait.sh - Long-poll the walkie-talkie hub for incoming messages.
+# Usage: radio-wait.sh <hub_url> <token>
+# Exits 0 on message received, 1 on kill/error.
+# Images are saved as temp files and their paths printed as [image: /path/to/file.png]
+
+set -e
+
+HUB_URL="$1"
+TOKEN="$2"
+
+if [ -z "$HUB_URL" ] || [ -z "$TOKEN" ]; then
+  echo "Usage: radio-wait.sh <hub_url> <token>" >&2
+  exit 1
+fi
+
+MAX_RETRIES=3
+retry_count=0
+
+while true; do
+  # Long-poll with 1 hour timeout (3660s)
+  response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $TOKEN" \
+    --max-time 3660 "$HUB_URL/poll" 2>/dev/null) || {
+    retry_count=$((retry_count + 1))
+    if [ "$retry_count" -ge "$MAX_RETRIES" ]; then
+      echo "CONNECTION_ERROR: Failed to connect after $MAX_RETRIES retries" >&2
+      exit 1
+    fi
+    sleep 5
+    continue
+  }
+
+  # Extract HTTP status code (last line) and body (everything else)
+  http_code=$(echo "$response" | tail -n1)
+  body=$(echo "$response" | sed '$d')
+
+  case "$http_code" in
+    200)
+      # Parse JSON and format messages using python3 (macOS built-in)
+      echo "$body" | python3 -c "
+import sys, json, os, base64, tempfile, datetime
+
+MIME_EXT = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+}
+
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, ValueError):
+    print('ERROR: Invalid JSON response', file=sys.stderr)
+    sys.exit(1)
+
+messages = data.get('messages', [])
+if not messages:
+    sys.exit(2)
+
+for m in messages:
+    if m.get('content', '').startswith('RADIO_KILLED:'):
+        print('RADIO_KILLED')
+        sys.exit(3)
+
+for m in messages:
+    from_user = m.get('from', '?')
+    to_user = m.get('to', '?')
+    content = m.get('content', '')
+    channel = m.get('channel', '#all')
+    ts = m.get('timestamp', 0)
+
+    try:
+        t = datetime.datetime.fromtimestamp(ts / 1000)
+        time_str = t.strftime('%H:%M:%S')
+    except (OSError, ValueError):
+        time_str = '??:??:??'
+
+    image_info = ''
+    img = m.get('image')
+    if img:
+        mime = img.get('mimeType', 'image/png')
+        ext = MIME_EXT.get(mime, '.png')
+        img_data = base64.b64decode(img.get('data', ''))
+        fd, path = tempfile.mkstemp(suffix=ext, prefix='walkie-img-')
+        os.write(fd, img_data)
+        os.close(fd)
+        image_info = f' [image: {path}]'
+
+    print(f'[{time_str}] {channel} {from_user} -> {to_user}: {content}{image_info}')
+"
+      py_exit=$?
+      case "$py_exit" in
+        0) exit 0 ;;       # Messages printed successfully
+        2) continue ;;     # Empty messages, retry poll
+        3) exit 1 ;;       # RADIO_KILLED
+        *) exit 1 ;;       # Parse error
+      esac
+      ;;
+    204)
+      # Poll timeout, retry
+      retry_count=0
+      continue
+      ;;
+    401)
+      echo "RADIO_KILLED"
+      exit 1
+      ;;
+    *)
+      retry_count=$((retry_count + 1))
+      if [ "$retry_count" -ge "$MAX_RETRIES" ]; then
+        echo "ERROR: HTTP $http_code after $MAX_RETRIES retries" >&2
+        exit 1
+      fi
+      sleep 5
+      ;;
+  esac
+done

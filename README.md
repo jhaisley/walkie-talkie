@@ -120,7 +120,7 @@ cp .cursor/mcp.json.sample .cursor/mcp.json
 # Edit .cursor/mcp.json and replace "your-secret-value-here" with your token
 ```
 
-> **Why?** MCP servers launched by Cursor CLI do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
+> **Why?** MCP servers launched by Cursor do not inherit environment variables from your shell, so the token must be written directly in `mcp.json`. This file is git-ignored to keep your secret out of version control.
 
 Then enable the MCP server:
 
@@ -128,19 +128,13 @@ Then enable the MCP server:
 agent mcp enable walkie-talkie
 ```
 
+> **Note:** Cursor's polling mechanism is experimental — it uses a shell script (`radio-wait.sh`) instead of the MCP long-polling tool used by Claude Code. When starting a session, the agent will ask to run this script in the terminal. **Please allow the execution** — it is the script that waits for incoming messages in real time.
+
 ### 5. Start talking
 
 Type `/walkie-talkie` in the chat. It defaults to the name "alice".
 
 Open another session with a different name to start chatting. You can mix Claude Code and Cursor — they all connect to the same Hub.
-
-> **Cursor**: If the `/walkie-talkie` slash command does not appear, reference the skill file directly instead:
->
-> ```
-> @.agents/skills/walkie-talkie
-> ```
->
-> Type the above in the chat to load the skill, then follow the instructions it provides.
 
 ### 🛑 Stopping agents
 
@@ -177,6 +171,7 @@ The system uses two separate tokens:
 | `radio_over` | Send a text message (`@name` or `@all`) |
 | `radio_send_image` | Send an image from a local file path or URL |
 | `radio_standby` | Wait for incoming messages (long poll, up to 1 hour) |
+| `radio_token` | Get session token and wait script path (for Cursor's terminal polling) |
 | `radio_channels` | List connected users and channels |
 | `radio_channel_create` | Create a new channel |
 | `radio_channel_join` | Join an existing channel |
