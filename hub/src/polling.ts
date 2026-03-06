@@ -30,8 +30,11 @@ export function setOffline(userName: string): void {
 export function addPoll(userName: string, req: IncomingMessage, res: ServerResponse): void {
   removePoll(userName);
 
+  console.log(`[poll-start] ${userName} waiting for messages...`);
+
   const timer = setTimeout(() => {
     pendingPolls.delete(userName);
+    console.log(`[poll-timeout] ${userName} (no messages after ${POLL_TIMEOUT_MS / 1000}s)`);
     res.writeHead(204);
     res.end();
   }, POLL_TIMEOUT_MS);
@@ -42,6 +45,7 @@ export function addPoll(userName: string, req: IncomingMessage, res: ServerRespo
   // Listen on req (not res) — more reliable when no response has been written yet.
   req.on("close", () => {
     if (!res.writableEnded && pendingPolls.has(userName)) {
+      console.log(`[poll-disconnect] ${userName} connection dropped`);
       clearTimeout(timer);
       pendingPolls.delete(userName);
       onDisconnectCallback?.(userName);
@@ -53,6 +57,7 @@ export function addPoll(userName: string, req: IncomingMessage, res: ServerRespo
   if (messages.length > 0) {
     clearTimeout(timer);
     pendingPolls.delete(userName);
+    console.log(`[poll-immediate] ${userName} <- ${messages.length} queued message(s)`);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ messages }));
   }
@@ -73,6 +78,7 @@ export function deliverMessage(userName: string): void {
       console.log(`[poll-deliver] ${userName} <- image (${m.image.mimeType}, ${m.image.data.length} chars base64)`);
     }
   }
+  console.log(`[poll-deliver] ${userName} <- ${messages.length} message(s)`);
 
   poll.res.writeHead(200, { "Content-Type": "application/json" });
   poll.res.end(JSON.stringify({ messages }));

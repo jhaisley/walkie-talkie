@@ -21,6 +21,10 @@ export class HubClient {
     this.baseUrl = new URL(hubUrl);
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl.toString().replace(/\/$/, "");
+  }
+
   private request<T>(options: RequestOptions): Promise<HubResponse<T>> {
     return new Promise((resolve, reject) => {
       const isHttps = this.baseUrl.protocol === "https:";
@@ -155,6 +159,38 @@ export class HubClient {
     if (res.status === 204) return null;
     if (res.status !== 200) {
       throw new Error((res.data as { error?: string }).error ?? "Poll failed");
+    }
+    return res.data;
+  }
+
+  async inbox(token: string): Promise<{
+    messages: Array<{
+      id: string;
+      from: string;
+      to: string;
+      content: string;
+      channel: string;
+      timestamp: number;
+      image?: { data: string; mimeType: string };
+    }>;
+  }> {
+    const res = await this.request<{
+      messages: Array<{
+        id: string;
+        from: string;
+        to: string;
+        content: string;
+        channel: string;
+        timestamp: number;
+        image?: { data: string; mimeType: string };
+      }>;
+    }>({
+      method: "GET",
+      path: "/inbox",
+      token,
+    });
+    if (res.status !== 200) {
+      throw new Error((res.data as { error?: string }).error ?? "Inbox fetch failed");
     }
     return res.data;
   }
