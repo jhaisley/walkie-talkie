@@ -128,6 +128,8 @@ Then enable the MCP server:
 agent mcp enable walkie-talkie
 ```
 
+> **Note:** Cursor's polling mechanism is experimental — it uses a shell script (`radio-wait.sh`) instead of the MCP long-polling tool used by Claude Code. When starting a session, the agent will ask to run this script in the terminal. **Please allow the execution** — it is the script that waits for incoming messages in real time.
+
 ### 5. Start talking
 
 Type `/walkie-talkie` in the chat. It defaults to the name "alice".
@@ -169,6 +171,7 @@ The system uses two separate tokens:
 | `radio_over` | Send a text message (`@name` or `@all`) |
 | `radio_send_image` | Send an image from a local file path or URL |
 | `radio_standby` | Wait for incoming messages (long poll, up to 1 hour) |
+| `radio_token` | Get session token and wait script path (for Cursor's terminal polling) |
 | `radio_channels` | List connected users and channels |
 | `radio_channel_create` | Create a new channel |
 | `radio_channel_join` | Join an existing channel |

@@ -22181,6 +22181,7 @@ import fs from "node:fs";
 import http2 from "node:http";
 import https2 from "node:https";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -30103,6 +30104,9 @@ var HubClient = class {
   constructor(hubUrl2) {
     this.baseUrl = new URL(hubUrl2);
   }
+  getBaseUrl() {
+    return this.baseUrl.toString().replace(/\/$/, "");
+  }
   request(options) {
     return new Promise((resolve, reject) => {
       const isHttps = this.baseUrl.protocol === "https:";
@@ -30203,6 +30207,17 @@ var HubClient = class {
     if (res.status === 204) return null;
     if (res.status !== 200) {
       throw new Error(res.data.error ?? "Poll failed");
+    }
+    return res.data;
+  }
+  async inbox(token) {
+    const res = await this.request({
+      method: "GET",
+      path: "/inbox",
+      token
+    });
+    if (res.status !== 200) {
+      throw new Error(res.data.error ?? "Inbox fetch failed");
     }
     return res.data;
   }
@@ -30417,6 +30432,70 @@ function createMcpServer(hubUrl2, joinTok) {
       } catch (e) {
         return {
           content: [{ type: "text", text: `Failed to send image: ${e.message}` }],
+          isError: true
+        };
+      }
+    }
+  );
+  server2.tool(
+    "radio_check",
+    "Check for new messages immediately without waiting. Returns any queued messages instantly. Use this instead of radio_standby when you want to poll periodically with sleep in between.",
+    {},
+    async () => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          isError: true
+        };
+      }
+      try {
+        const result = await client.inbox(currentToken);
+        if (result.messages.length === 0) {
+          return {
+            content: [{ type: "text", text: "No new messages." }]
+          };
+        }
+        const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
+        if (killed) {
+          currentToken = null;
+          currentName = null;
+          return {
+            content: [
+              {
+                type: "text",
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+              }
+            ],
+            isError: true
+          };
+        }
+        const contentBlocks = [];
+        for (const m of result.messages) {
+          if (m.image) {
+            contentBlocks.push({
+              type: "image",
+              data: m.image.data,
+              mimeType: m.image.mimeType
+            });
+          }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text", text: line });
+        }
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))
+        ];
+        if (channels.length > 0) {
+          contentBlocks.push({
+            type: "text",
+            text: `
+IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
+          });
+        }
+        return { content: contentBlocks };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Check failed: ${e.message}` }],
           isError: true
         };
       }
@@ -30650,6 +30729,33 @@ ${channelText}`
           isError: true
         };
       }
+    }
+  );
+  server2.tool(
+    "radio_token",
+    "Get the current session token, hub URL, and path to radio-wait.sh script. Use this to run the wait script in a terminal for real-time polling.",
+    {},
+    async () => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          isError: true
+        };
+      }
+      const thisFile = fileURLToPath(import.meta.url);
+      const waitScript = path.resolve(path.dirname(thisFile), "..", "bin", "radio-wait.sh");
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              hubUrl: client.getBaseUrl(),
+              token: currentToken,
+              waitScript
+            })
+          }
+        ]
+      };
     }
   );
   server2.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {

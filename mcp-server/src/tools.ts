@@ -2,6 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { HubClient } from "./client.js";
@@ -166,6 +167,71 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       } catch (e) {
         return {
           content: [{ type: "text" as const, text: `Failed to send image: ${(e as Error).message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "radio_check",
+    "Check for new messages immediately without waiting. Returns any queued messages instantly. Use this instead of radio_standby when you want to poll periodically with sleep in between.",
+    {},
+    async () => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          isError: true,
+        };
+      }
+      try {
+        const result = await client.inbox(currentToken);
+        if (result.messages.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "No new messages." }],
+          };
+        }
+        const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
+        if (killed) {
+          currentToken = null;
+          currentName = null;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+              },
+            ],
+            isError: true,
+          };
+        }
+        const contentBlocks: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> =
+          [];
+        for (const m of result.messages) {
+          if (m.image) {
+            contentBlocks.push({
+              type: "image" as const,
+              data: m.image.data,
+              mimeType: m.image.mimeType,
+            });
+          }
+          const imageTag = m.image ? " [image attached]" : "";
+          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
+          contentBlocks.push({ type: "text" as const, text: line });
+        }
+        const channels = [
+          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel)),
+        ];
+        if (channels.length > 0) {
+          contentBlocks.push({
+            type: "text" as const,
+            text: `\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`,
+          });
+        }
+        return { content: contentBlocks };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Check failed: ${(e as Error).message}` }],
           isError: true,
         };
       }
@@ -413,6 +479,34 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
           isError: true,
         };
       }
+    },
+  );
+
+  server.tool(
+    "radio_token",
+    "Get the current session token, hub URL, and path to radio-wait.sh script. Use this to run the wait script in a terminal for real-time polling.",
+    {},
+    async () => {
+      if (!currentToken) {
+        return {
+          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          isError: true,
+        };
+      }
+      const thisFile = fileURLToPath(import.meta.url);
+      const waitScript = path.resolve(path.dirname(thisFile), "..", "bin", "radio-wait.sh");
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              hubUrl: client.getBaseUrl(),
+              token: currentToken,
+              waitScript,
+            }),
+          },
+        ],
+      };
     },
   );
 

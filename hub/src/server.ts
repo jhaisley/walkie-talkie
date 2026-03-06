@@ -33,7 +33,7 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { addPoll, isOnline, onPollDisconnect, removePoll, setOffline, setOnline } from "./polling.js";
-import { enqueueAndDeliver, ensureQueue, removeQueue, routeMessage } from "./router.js";
+import { drainQueue, enqueueAndDeliver, ensureQueue, removeQueue, routeMessage } from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -136,6 +136,11 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   } catch (e) {
     sendError(res, 404, (e as Error).message);
   }
+};
+
+const handleInbox: RouteHandler = async (_req, res, userName) => {
+  const messages = drainQueue(userName!);
+  sendJson(res, 200, { messages });
 };
 
 const handlePoll: RouteHandler = async (req, res, userName) => {
@@ -454,6 +459,7 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
 const protectedRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/send": { method: "POST", handler: handleSend },
   "/poll": { method: "GET", handler: handlePoll },
+  "/inbox": { method: "GET", handler: handleInbox },
   "/unregister": { method: "POST", handler: handleUnregister },
   "/channel-create": { method: "POST", handler: handleChannelCreate },
   "/channel-join": { method: "POST", handler: handleChannelJoin },
