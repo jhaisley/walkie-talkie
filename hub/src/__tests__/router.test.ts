@@ -103,4 +103,21 @@ describe("routeMessage", () => {
     expect(bobMsgs).toHaveLength(1);
     expect(bobMsgs[0].channel).toBe("#room");
   });
+
+  it("should include image in routed message", () => {
+    registerUser("alice");
+    registerUser("bob");
+    ensureQueue("alice");
+    ensureQueue("bob");
+    joinChannel("#all", "alice");
+    joinChannel("#all", "bob");
+
+    const image = { data: "iVBORw0KGgo=", mimeType: "image/png" };
+    const msg = routeMessage("alice", "@all", "check this", "#all", image);
+    expect(msg.image).toEqual(image);
+
+    const bobMsgs = drainQueue("bob");
+    expect(bobMsgs).toHaveLength(1);
+    expect(bobMsgs[0].image).toEqual(image);
+  });
 });
