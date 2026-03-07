@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.6.0 (2026-03-08)
+
+### Features
+- Add client role (agent/bridge) for relay services (#96)
+- Add system notifications for bridge clients (#98)
+
+### Fixes
+- Fix misleading trigger description in comparison table (#91)
+
+### Other
+- Add Slack bot integration section to README (#85)
+- Add Cursor Automations comparison to README (#87)
+- Move slack-bot to subsystems/ and co-launch with npm start (#94)
+
+
 ## v1.5.0 (2026-03-07)
 
 ### Features
