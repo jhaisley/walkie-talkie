@@ -77,8 +77,8 @@ export WALKIE_TALKIE_JOIN_TOKEN=your-hub-join-token
 ```bash
 # From the project root
 npm install
-npm run build --workspace=slack-bot
-npm run start --workspace=slack-bot
+npm run build --workspace=@walkie-talkie/slack-bot
+npm run start --workspace=@walkie-talkie/slack-bot
 ```
 
 You should see:
