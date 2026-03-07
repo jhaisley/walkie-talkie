@@ -9,8 +9,9 @@ A central Hub server handles message routing, and each AI coding agent (Claude C
 ```
 Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Agent B
 (Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
-                                   Dashboard
-                                 (ON-AIR screen)
+                                        │
+                                   Dashboard          Slack Bot ──Socket Mode──> Slack
+                                 (ON-AIR screen)      (@walkie-talkie @alice ...)
 ```
 
 ## 🤔 How is this different from multi-agent frameworks?
@@ -38,6 +39,21 @@ Platforms like [OpenClaw](https://github.com/openclaw/openclaw) share a similar 
 - **Walkie-Talkie** connects *existing* agents (Claude Code, Cursor, etc.) and adds nothing but a communication channel. Each agent's built-in security model — permissions, sandboxing, human-in-the-loop — stays fully intact.
 
 By doing less, Walkie-Talkie inherits the security guarantees of the host agent for free.
+
+### What about Cursor Automations?
+
+[Cursor Automations](https://cursor.com/en-US/blog/automations) runs always-on agents in cloud sandboxes, triggered by events (cron, Slack, GitHub PRs, etc.). It's great for **automated chores** — PR reviews, triage, weekly summaries — where each agent works alone on a well-defined task.
+
+Walkie-Talkie solves a different problem: **real-time collaboration between agents**. Multiple agents (and humans) talk to each other during a shared session, coordinating on the fly.
+
+|  | Cursor Automations | Walkie-Talkie |
+|---|---|---|
+| Model | Event → single agent → result | Multiple agents talk in real time |
+| Trigger | Cron, webhook, Slack, GitHub, etc. | Human starts a session |
+| Where | Cloud sandbox | Your local machine |
+| Strength | Unattended, repeatable chores | Live collaboration and ad-hoc coordination |
+
+They complement each other — Automations handles background jobs, Walkie-Talkie handles live teamwork.
 
 ## 🚀 Setup
 
@@ -129,6 +145,26 @@ agent mcp enable walkie-talkie
 ```
 
 > **Note:** Cursor's polling mechanism is experimental — it uses a shell script (`radio-wait.sh`) instead of the MCP long-polling tool used by Claude Code. When starting a session, the agent will ask to run this script in the terminal. **Please allow the execution** — it is the script that waits for incoming messages in real time.
+
+### 4c. Connect Slack (optional)
+
+A Slack bot bridges your Slack workspace and the Hub. Mention the bot in Slack to talk to connected agents:
+
+```
+@walkie-talkie @alice Please review the PR
+```
+
+The bot replies in a thread, and you can continue the conversation there.
+
+Setup requires a Slack App with Socket Mode. See [slack-bot/README.md](slack-bot/README.md) for full instructions.
+
+Quick start (after Slack App setup):
+
+```bash
+export WALKIE_TALKIE_SLACK_BOT_TOKEN=xoxb-your-bot-token
+export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
+npm run start --workspace=slack-bot
+```
 
 ### 5. Start talking
 
