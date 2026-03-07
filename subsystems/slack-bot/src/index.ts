@@ -10,6 +10,7 @@ const SLACK_BOT_TOKEN = process.env.WALKIE_TALKIE_SLACK_BOT_TOKEN;
 const SLACK_APP_TOKEN = process.env.WALKIE_TALKIE_SLACK_APP_TOKEN;
 const HUB_URL = process.env.WALKIE_TALKIE_HUB_URL || "http://localhost:9559";
 const JOIN_TOKEN = process.env.WALKIE_TALKIE_JOIN_TOKEN;
+let slackNotifyChannel: string | null = process.env.WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL ?? null;
 const BOT_NAME = "slack";
 
 if (!SLACK_BOT_TOKEN) {
@@ -40,7 +41,7 @@ async function hubRegister(): Promise<void> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${JOIN_TOKEN}`,
       },
-      body: JSON.stringify({ name: BOT_NAME, oldToken: hubToken }),
+      body: JSON.stringify({ name: BOT_NAME, oldToken: hubToken, role: "bridge" }),
     });
     if (res.ok) {
       const data = (await res.json()) as { token: string; name: string };
@@ -82,6 +83,19 @@ interface HubMessage {
   timestamp: number;
 }
 
+interface HubUser {
+  name: string;
+  online: boolean;
+  role: string;
+}
+
+async function hubGetAgents(): Promise<HubUser[]> {
+  const res = await fetch(`${HUB_URL}/users`);
+  if (!res.ok) return [];
+  const data = (await res.json()) as { users: HubUser[] };
+  return data.users.filter((u) => u.role === "agent" && u.online);
+}
+
 async function hubPoll(): Promise<HubMessage[]> {
   const res = await fetch(`${HUB_URL}/poll`, {
     method: "GET",
@@ -113,6 +127,29 @@ const pendingReplies = new Map<string, PendingReply>();
 const threadAgents = new Map<string, string>();
 
 // ---------------------------------------------------------------------------
+// System message formatting
+// ---------------------------------------------------------------------------
+
+function formatSystemMessage(content: string): string | null {
+  if (content.startsWith("CONNECTED_USERS: ")) {
+    const users = content.slice("CONNECTED_USERS: ".length);
+    if (users === "(none)") {
+      return ":satellite: Walkie-Talkie bridge connected. No agents online.";
+    }
+    return `:satellite: Walkie-Talkie bridge connected. Online agents: ${users}`;
+  }
+  if (content.startsWith("USER_JOINED: ")) {
+    const name = content.slice("USER_JOINED: ".length);
+    return `:loud_sound: *${name}* joined Walkie-Talkie`;
+  }
+  if (content.startsWith("USER_LEFT: ")) {
+    const name = content.slice("USER_LEFT: ".length);
+    return `:mute: *${name}* left Walkie-Talkie`;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Poll loop — receives messages from Hub and posts to Slack
 // ---------------------------------------------------------------------------
 
@@ -123,8 +160,25 @@ async function pollLoop(): Promise<void> {
     try {
       const messages = await hubPoll();
       for (const msg of messages) {
-        // Skip system messages
-        if (msg.from === "system") continue;
+        // Handle system notifications (user join/leave)
+        if (msg.from === "system") {
+          console.log(`[system] ${msg.content}`);
+          if (slackNotifyChannel) {
+            const text = formatSystemMessage(msg.content);
+            if (text) {
+              try {
+                await slackApp.client.chat.postMessage({ channel: slackNotifyChannel, text });
+              } catch (e) {
+                const err = (e as Error).message;
+                console.error(
+                  `[notify] Failed to post to ${slackNotifyChannel}: ${err}. Disabling Slack notifications.`,
+                );
+                slackNotifyChannel = null;
+              }
+            }
+          }
+          continue;
+        }
         // Skip our own messages
         if (msg.from === BOT_NAME) continue;
 
@@ -211,6 +265,13 @@ async function main(): Promise<void> {
 
     const { to, content } = parseCommand(rawText);
 
+    // Check if any agents are connected
+    const agents = await hubGetAgents();
+    if (agents.length === 0) {
+      await say({ text: "No agents are currently connected to the Hub.", thread_ts: event.ts });
+      return;
+    }
+
     // Post "thinking..." in thread
     const thinkingRes = await say({ text: `_thinking... (sending to ${to})_`, thread_ts: event.ts });
 
@@ -264,6 +325,13 @@ async function main(): Promise<void> {
       content = rawText;
     }
 
+    // Check if any agents are connected
+    const agents = await hubGetAgents();
+    if (agents.length === 0) {
+      await say({ text: "No agents are currently connected to the Hub.", thread_ts: threadTs });
+      return;
+    }
+
     // Track pending reply for the thread
     const agentKey = to === "@all" ? "*" : to.slice(1);
     if (to !== "@all") {
@@ -299,7 +367,31 @@ async function main(): Promise<void> {
   console.log("[slack-bot] Running");
 }
 
+async function notifyShutdown(): Promise<void> {
+  if (!slackNotifyChannel) return;
+  try {
+    await slackApp.client.chat.postMessage({
+      channel: slackNotifyChannel,
+      text: ":electric_plug: Walkie-Talkie bridge disconnected.",
+    });
+  } catch {
+    // best effort
+  }
+}
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("[slack-bot] Shutting down...");
+  await notifyShutdown();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
+
 main().catch((e) => {
   console.error("Fatal:", e);
-  process.exit(1);
+  notifyShutdown().finally(() => process.exit(1));
 });

@@ -75,12 +75,25 @@ Two environment variables are required:
 | `WALKIE_TALKIE_JOIN_TOKEN` | Shared secret for MCP servers to register on the Hub |
 | `WALKIE_TALKIE_ADMIN_TOKEN` | Secret for dashboard operations (kick, send as operator) |
 
+For the Slack bot (optional):
+
+| Variable | Purpose |
+|----------|---------|
+| `WALKIE_TALKIE_SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`) |
+| `WALKIE_TALKIE_SLACK_APP_TOKEN` | Slack App-Level Token (`xapp-...`) |
+| `WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL` | Slack channel ID for system notifications (agent join/leave). The bot must be invited to this channel (`/invite @walkie-talkie`). |
+
 Add them to your shell profile (e.g. `~/.zshrc`):
 
 ```bash
 # Generate tokens once:  openssl rand -base64 32
 export WALKIE_TALKIE_JOIN_TOKEN=your-secret-value-here
 export WALKIE_TALKIE_ADMIN_TOKEN=your-admin-secret-here
+
+# Slack bot (optional — see subsystems/slack-bot/README.md for setup)
+# export WALKIE_TALKIE_SLACK_BOT_TOKEN=xoxb-your-bot-token
+# export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
+# export WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL=C0123456789
 ```
 
 Then reload your profile or restart your terminal:
@@ -156,14 +169,12 @@ A Slack bot bridges your Slack workspace and the Hub. Mention the bot in Slack t
 
 The bot replies in a thread, and you can continue the conversation there.
 
-Setup requires a Slack App with Socket Mode. See [slack-bot/README.md](slack-bot/README.md) for full instructions.
+Setup requires a Slack App with Socket Mode. See [subsystems/slack-bot/README.md](subsystems/slack-bot/README.md) for full instructions.
 
-Quick start (after Slack App setup):
+Once the Slack tokens are set in your environment, `npm start` launches the Slack bot alongside the Hub automatically. To run it standalone:
 
 ```bash
-export WALKIE_TALKIE_SLACK_BOT_TOKEN=xoxb-your-bot-token
-export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
-npm run start --workspace=slack-bot
+npm run start --workspace=@walkie-talkie/slack-bot
 ```
 
 ### 5. Start talking
