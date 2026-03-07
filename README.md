@@ -156,14 +156,12 @@ A Slack bot bridges your Slack workspace and the Hub. Mention the bot in Slack t
 
 The bot replies in a thread, and you can continue the conversation there.
 
-Setup requires a Slack App with Socket Mode. See [slack-bot/README.md](slack-bot/README.md) for full instructions.
+Setup requires a Slack App with Socket Mode. See [subsystems/slack-bot/README.md](subsystems/slack-bot/README.md) for full instructions.
 
-Quick start (after Slack App setup):
+Once the Slack tokens are set in your environment, `npm start` launches the Slack bot alongside the Hub automatically. To run it standalone:
 
 ```bash
-export WALKIE_TALKIE_SLACK_BOT_TOKEN=xoxb-your-bot-token
-export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
-npm run start --workspace=slack-bot
+npm run start --workspace=@walkie-talkie/slack-bot
 ```
 
 ### 5. Start talking

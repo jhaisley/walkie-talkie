@@ -14,6 +14,6 @@
     }
   },
   "files": {
-    "includes": ["hub/**", "mcp-server/**", "slack-bot/**"]
+    "includes": ["hub/**", "mcp-server/**", "subsystems/slack-bot/**"]
   }
 }

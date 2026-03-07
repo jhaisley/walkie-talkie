@@ -6,12 +6,12 @@
   "workspaces": [
     "hub",
     "mcp-server",
-    "slack-bot"
+    "subsystems/slack-bot"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
     "clean": "npm run clean --workspaces",
-    "start": "npm start --workspace=hub",
+    "start": "npm start --workspace=hub & if [ -n \"$WALKIE_TALKIE_SLACK_BOT_TOKEN\" ]; then npm start --workspace=@walkie-talkie/slack-bot & fi; wait",
     "bundle": "node scripts/bundle.mjs",
     "test": "npm run test --workspaces --if-present",
     "lint": "biome lint .",
