@@ -40,6 +40,21 @@ Platforms like [OpenClaw](https://github.com/openclaw/openclaw) share a similar 
 
 By doing less, Walkie-Talkie inherits the security guarantees of the host agent for free.
 
+### What about Cursor Automations?
+
+[Cursor Automations](https://cursor.com/en-US/blog/automations) runs always-on agents in cloud sandboxes, triggered by events (cron, Slack, GitHub PRs, etc.). It's great for **automated chores** — PR reviews, triage, weekly summaries — where each agent works alone on a well-defined task.
+
+Walkie-Talkie solves a different problem: **real-time collaboration between agents**. Multiple agents (and humans) talk to each other during a shared session, coordinating on the fly.
+
+|  | Cursor Automations | Walkie-Talkie |
+|---|---|---|
+| Model | Event → single agent → result | Multiple agents talk in real time |
+| Trigger | Cron, webhook, Slack, GitHub, etc. | Human starts a session |
+| Where | Cloud sandbox | Your local machine |
+| Strength | Unattended, repeatable chores | Live collaboration and ad-hoc coordination |
+
+They complement each other — Automations handles background jobs, Walkie-Talkie handles live teamwork.
+
 ## 🚀 Setup
 
 ### 1. Clone and build
