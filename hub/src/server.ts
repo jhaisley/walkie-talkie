@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import {
   authenticateRequest,
   getRegisteredUsers,
+  getUserRole,
   getUserToken,
   isUserRegistered,
   registerUser,
@@ -76,7 +77,8 @@ const handleRegister: RouteHandler = async (req, res) => {
       clearTimeout(graceTimer);
       staleTimers.delete(body.name);
     }
-    const user = registerUser(body.name);
+    const role = body.role === "bridge" ? "bridge" : "agent";
+    const user = registerUser(body.name, role);
     ensureQueue(body.name);
     setOnline(body.name);
     // Auto-join #all
@@ -156,6 +158,7 @@ const handleUsers: RouteHandler = async (_req, res) => {
   const users = getRegisteredUsers().map((name) => ({
     name,
     online: isOnline(name),
+    role: getUserRole(name) ?? "agent",
   }));
   sendJson(res, 200, { users });
 };
