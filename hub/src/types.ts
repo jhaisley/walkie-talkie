@@ -15,15 +15,19 @@ export interface Message {
   image?: MessageImage;
 }
 
+export type UserRole = "agent" | "bridge";
+
 export interface User {
   name: string;
   token: string;
+  role: UserRole;
   registeredAt: number;
 }
 
 export interface RegisterRequest {
   name: string;
   oldToken?: string;
+  role?: UserRole;
 }
 
 export interface RegisterResponse {

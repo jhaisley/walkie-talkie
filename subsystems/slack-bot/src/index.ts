@@ -40,7 +40,7 @@ async function hubRegister(): Promise<void> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${JOIN_TOKEN}`,
       },
-      body: JSON.stringify({ name: BOT_NAME, oldToken: hubToken }),
+      body: JSON.stringify({ name: BOT_NAME, oldToken: hubToken, role: "bridge" }),
     });
     if (res.ok) {
       const data = (await res.json()) as { token: string; name: string };
@@ -80,6 +80,19 @@ interface HubMessage {
   content: string;
   channel: string;
   timestamp: number;
+}
+
+interface HubUser {
+  name: string;
+  online: boolean;
+  role: string;
+}
+
+async function hubGetAgents(): Promise<HubUser[]> {
+  const res = await fetch(`${HUB_URL}/users`);
+  if (!res.ok) return [];
+  const data = (await res.json()) as { users: HubUser[] };
+  return data.users.filter((u) => u.role === "agent" && u.online);
 }
 
 async function hubPoll(): Promise<HubMessage[]> {
@@ -211,6 +224,13 @@ async function main(): Promise<void> {
 
     const { to, content } = parseCommand(rawText);
 
+    // Check if any agents are connected
+    const agents = await hubGetAgents();
+    if (agents.length === 0) {
+      await say({ text: "No agents are currently connected to the Hub.", thread_ts: event.ts });
+      return;
+    }
+
     // Post "thinking..." in thread
     const thinkingRes = await say({ text: `_thinking... (sending to ${to})_`, thread_ts: event.ts });
 
@@ -262,6 +282,13 @@ async function main(): Promise<void> {
     if (to === "@all" && threadAgents.has(threadTs)) {
       to = threadAgents.get(threadTs)!;
       content = rawText;
+    }
+
+    // Check if any agents are connected
+    const agents = await hubGetAgents();
+    if (agents.length === 0) {
+      await say({ text: "No agents are currently connected to the Hub.", thread_ts: threadTs });
+      return;
     }
 
     // Track pending reply for the thread

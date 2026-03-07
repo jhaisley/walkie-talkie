@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isUserRegistered } from "./auth.js";
+import { getUserRole, isUserRegistered } from "./auth.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
 import { dbSaveMessage } from "./db.js";
 import { deliverMessage } from "./polling.js";
@@ -47,11 +47,14 @@ export function routeMessage(
 
     dbSaveMessage(message);
 
-    // Deliver to all channel members except sender
+    const senderRole = getUserRole(from);
+
+    // Deliver to all channel members except sender.
+    // When a bridge sends @all, skip other bridges to avoid relay loops.
     for (const user of members) {
-      if (user !== from) {
-        enqueueAndDeliver(user, message);
-      }
+      if (user === from) continue;
+      if (senderRole === "bridge" && getUserRole(user) === "bridge") continue;
+      enqueueAndDeliver(user, message);
     }
     return message;
   }
