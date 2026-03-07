@@ -140,7 +140,7 @@ function formatSystemMessage(content: string): string | null {
   }
   if (content.startsWith("USER_JOINED: ")) {
     const name = content.slice("USER_JOINED: ".length);
-    return `:green_circle: *${name}* joined Walkie-Talkie`;
+    return `:large_green_circle: *${name}* joined Walkie-Talkie`;
   }
   if (content.startsWith("USER_LEFT: ")) {
     const name = content.slice("USER_LEFT: ".length);
