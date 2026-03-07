@@ -54,13 +54,20 @@ With Socket Mode enabled, no Request URL is needed — events are delivered via 
    - `message.channels` — receive thread replies in public channels
 3. Click **Save Changes**
 
-### 6. Install to Workspace
+### 6. Show Bot as Online
+
+1. Go to **Features** → **App Home**
+2. Toggle **Always Show My Bot as Online** on
+
+This makes the bot appear online in Slack whenever it is running.
+
+### 7. Install to Workspace
 
 1. Go to **Settings** → **Install App** and click **Install to Workspace**
 2. Authorize the requested permissions
 3. Copy the **Bot User OAuth Token** (starts with `xoxb-`) — this is your `WALKIE_TALKIE_SLACK_BOT_TOKEN`
 
-### 7. Set Environment Variables
+### 8. Set Environment Variables
 
 Add to your shell profile (e.g. `~/.zshrc`):
 
@@ -75,7 +82,7 @@ export WALKIE_TALKIE_JOIN_TOKEN=your-hub-join-token
 # export WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL=C0123456789
 ```
 
-### 8. Build and Run
+### 9. Build and Run
 
 ```bash
 # From the project root
