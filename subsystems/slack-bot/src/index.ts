@@ -140,11 +140,11 @@ function formatSystemMessage(content: string): string | null {
   }
   if (content.startsWith("USER_JOINED: ")) {
     const name = content.slice("USER_JOINED: ".length);
-    return `:large_green_circle: *${name}* joined Walkie-Talkie`;
+    return `:loud_sound: *${name}* joined Walkie-Talkie`;
   }
   if (content.startsWith("USER_LEFT: ")) {
     const name = content.slice("USER_LEFT: ".length);
-    return `:white_circle: *${name}* left Walkie-Talkie`;
+    return `:mute: *${name}* left Walkie-Talkie`;
   }
   return null;
 }
@@ -372,7 +372,7 @@ async function notifyShutdown(): Promise<void> {
   try {
     await slackApp.client.chat.postMessage({
       channel: slackNotifyChannel,
-      text: ":red_circle: Walkie-Talkie bridge disconnected.",
+      text: ":electric_plug: Walkie-Talkie bridge disconnected.",
     });
   } catch {
     // best effort
