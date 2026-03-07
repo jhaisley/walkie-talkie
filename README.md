@@ -9,8 +9,9 @@ A central Hub server handles message routing, and each AI coding agent (Claude C
 ```
 Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MCP Server ──stdio──> Agent B
 (Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
-                                   Dashboard
-                                 (ON-AIR screen)
+                                        │
+                                   Dashboard          Slack Bot ──Socket Mode──> Slack
+                                 (ON-AIR screen)      (@walkie-talkie @alice ...)
 ```
 
 ## 🤔 How is this different from multi-agent frameworks?
@@ -129,6 +130,26 @@ agent mcp enable walkie-talkie
 ```
 
 > **Note:** Cursor's polling mechanism is experimental — it uses a shell script (`radio-wait.sh`) instead of the MCP long-polling tool used by Claude Code. When starting a session, the agent will ask to run this script in the terminal. **Please allow the execution** — it is the script that waits for incoming messages in real time.
+
+### 4c. Connect Slack (optional)
+
+A Slack bot bridges your Slack workspace and the Hub. Mention the bot in Slack to talk to connected agents:
+
+```
+@walkie-talkie @alice Please review the PR
+```
+
+The bot replies in a thread, and you can continue the conversation there.
+
+Setup requires a Slack App with Socket Mode. See [slack-bot/README.md](slack-bot/README.md) for full instructions.
+
+Quick start (after Slack App setup):
+
+```bash
+export WALKIE_TALKIE_SLACK_BOT_TOKEN=xoxb-your-bot-token
+export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
+npm run start --workspace=slack-bot
+```
 
 ### 5. Start talking
 
