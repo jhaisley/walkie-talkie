@@ -34,7 +34,7 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { addPoll, isOnline, onPollDisconnect, removePoll, setOffline, setOnline } from "./polling.js";
-import { drainQueue, enqueueAndDeliver, ensureQueue, removeQueue, routeMessage } from "./router.js";
+import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -101,6 +101,22 @@ const handleRegister: RouteHandler = async (req, res) => {
     }
     broadcast({ type: "join", name: body.name, timestamp: Date.now() });
     console.log(`[register] ${body.name}`);
+
+    if (role === "agent") {
+      notifyBridges(`USER_JOINED: ${body.name}`);
+    } else if (role === "bridge") {
+      // Send current agent list to the newly connected bridge (even if empty)
+      const agents = getRegisteredUsers().filter((n) => n !== body.name && getUserRole(n) === "agent");
+      enqueueAndDeliver(body.name, {
+        id: randomUUID(),
+        from: "system",
+        to: body.name,
+        content: agents.length > 0 ? `CONNECTED_USERS: ${agents.join(", ")}` : "CONNECTED_USERS: (none)",
+        channel: "#all",
+        timestamp: Date.now(),
+      });
+    }
+
     sendJson(res, 200, { token: user.token, name: user.name });
   } catch (e) {
     sendError(res, 409, (e as Error).message);
@@ -164,16 +180,21 @@ const handleUsers: RouteHandler = async (_req, res) => {
 };
 
 const handleUnregister: RouteHandler = async (_req, res, userName) => {
+  const role = getUserRole(userName!);
   removePoll(userName!);
   removeQueue(userName!);
   unregisterUser(userName!);
   broadcast({ type: "leave", name: userName!, timestamp: Date.now() });
+  if (role === "agent") {
+    notifyBridges(`USER_LEFT: ${userName}`);
+  }
   console.log(`[unregister] ${userName}`);
   sendJson(res, 200, { ok: true });
 };
 
 function kickUser(name: string): boolean {
   if (!getRegisteredUsers().includes(name)) return false;
+  const role = getUserRole(name);
   // Send a termination message directly to the target user's queue only
   ensureQueue(name);
   enqueueAndDeliver(name, {
@@ -188,6 +209,9 @@ function kickUser(name: string): boolean {
   removeQueue(name);
   unregisterUser(name);
   broadcast({ type: "leave", name, timestamp: Date.now() });
+  if (role === "agent") {
+    notifyBridges(`USER_LEFT: ${name}`);
+  }
   console.log(`[kick] ${name}`);
   return true;
 }
@@ -498,11 +522,15 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
       setTimeout(() => {
         staleTimers.delete(userName);
         if (isUserRegistered(userName) && !isOnline(userName)) {
+          const role = getUserRole(userName);
           removePoll(userName);
           removeQueue(userName);
           setOffline(userName);
           unregisterUser(userName);
           broadcast({ type: "leave", name: userName, timestamp: Date.now() });
+          if (role === "agent") {
+            notifyBridges(`USER_LEFT: ${userName}`);
+          }
           console.log(`[auto-unregister] ${userName} (stale)`);
         }
       }, STALE_GRACE_MS),

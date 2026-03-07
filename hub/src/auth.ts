@@ -45,6 +45,12 @@ export function getUserRole(name: string): UserRole | null {
   return users.get(name)?.role ?? null;
 }
 
+export function getUsersByRole(role: UserRole): string[] {
+  return Array.from(users.values())
+    .filter((u) => u.role === role)
+    .map((u) => u.name);
+}
+
 export function isUserRegistered(name: string): boolean {
   return users.has(name);
 }

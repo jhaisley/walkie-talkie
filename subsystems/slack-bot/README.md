@@ -70,6 +70,9 @@ export WALKIE_TALKIE_SLACK_APP_TOKEN=xapp-your-app-token
 export WALKIE_TALKIE_JOIN_TOKEN=your-hub-join-token
 # Optional: override Hub URL (default: http://localhost:9559)
 # export WALKIE_TALKIE_HUB_URL=http://localhost:9559
+# Optional: Slack channel ID for system notifications (agent join/leave)
+# The bot must be invited to this channel (/invite @walkie-talkie)
+# export WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL=C0123456789
 ```
 
 ### 8. Build and Run
