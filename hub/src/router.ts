@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getUserRole, isUserRegistered } from "./auth.js";
+import { getUserRole, getUsersByRole, isUserRegistered } from "./auth.js";
 import { getChannelMembers, isChannelMember } from "./channels.js";
 import { dbSaveMessage } from "./db.js";
 import { deliverMessage } from "./polling.js";
@@ -95,4 +95,19 @@ export function enqueueAndDeliver(targetName: string, message: Message): void {
   const queue = messageQueues.get(targetName)!;
   queue.push(message);
   deliverMessage(targetName);
+}
+
+export function notifyBridges(content: string): void {
+  const bridges = getUsersByRole("bridge");
+  const message: Message = {
+    id: randomUUID(),
+    from: "system",
+    to: "@bridges",
+    content,
+    channel: "#all",
+    timestamp: Date.now(),
+  };
+  for (const bridge of bridges) {
+    enqueueAndDeliver(bridge, message);
+  }
 }

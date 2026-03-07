@@ -10,6 +10,7 @@ const SLACK_BOT_TOKEN = process.env.WALKIE_TALKIE_SLACK_BOT_TOKEN;
 const SLACK_APP_TOKEN = process.env.WALKIE_TALKIE_SLACK_APP_TOKEN;
 const HUB_URL = process.env.WALKIE_TALKIE_HUB_URL || "http://localhost:9559";
 const JOIN_TOKEN = process.env.WALKIE_TALKIE_JOIN_TOKEN;
+let slackNotifyChannel: string | null = process.env.WALKIE_TALKIE_SLACK_SYSTEM_NOTIFY_CHANNEL ?? null;
 const BOT_NAME = "slack";
 
 if (!SLACK_BOT_TOKEN) {
@@ -126,6 +127,29 @@ const pendingReplies = new Map<string, PendingReply>();
 const threadAgents = new Map<string, string>();
 
 // ---------------------------------------------------------------------------
+// System message formatting
+// ---------------------------------------------------------------------------
+
+function formatSystemMessage(content: string): string | null {
+  if (content.startsWith("CONNECTED_USERS: ")) {
+    const users = content.slice("CONNECTED_USERS: ".length);
+    if (users === "(none)") {
+      return ":satellite: Walkie-Talkie bridge connected. No agents online.";
+    }
+    return `:satellite: Walkie-Talkie bridge connected. Online agents: ${users}`;
+  }
+  if (content.startsWith("USER_JOINED: ")) {
+    const name = content.slice("USER_JOINED: ".length);
+    return `:loud_sound: *${name}* joined Walkie-Talkie`;
+  }
+  if (content.startsWith("USER_LEFT: ")) {
+    const name = content.slice("USER_LEFT: ".length);
+    return `:mute: *${name}* left Walkie-Talkie`;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Poll loop — receives messages from Hub and posts to Slack
 // ---------------------------------------------------------------------------
 
@@ -136,8 +160,25 @@ async function pollLoop(): Promise<void> {
     try {
       const messages = await hubPoll();
       for (const msg of messages) {
-        // Skip system messages
-        if (msg.from === "system") continue;
+        // Handle system notifications (user join/leave)
+        if (msg.from === "system") {
+          console.log(`[system] ${msg.content}`);
+          if (slackNotifyChannel) {
+            const text = formatSystemMessage(msg.content);
+            if (text) {
+              try {
+                await slackApp.client.chat.postMessage({ channel: slackNotifyChannel, text });
+              } catch (e) {
+                const err = (e as Error).message;
+                console.error(
+                  `[notify] Failed to post to ${slackNotifyChannel}: ${err}. Disabling Slack notifications.`,
+                );
+                slackNotifyChannel = null;
+              }
+            }
+          }
+          continue;
+        }
         // Skip our own messages
         if (msg.from === BOT_NAME) continue;
 
@@ -326,7 +367,31 @@ async function main(): Promise<void> {
   console.log("[slack-bot] Running");
 }
 
+async function notifyShutdown(): Promise<void> {
+  if (!slackNotifyChannel) return;
+  try {
+    await slackApp.client.chat.postMessage({
+      channel: slackNotifyChannel,
+      text: ":electric_plug: Walkie-Talkie bridge disconnected.",
+    });
+  } catch {
+    // best effort
+  }
+}
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("[slack-bot] Shutting down...");
+  await notifyShutdown();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
+
 main().catch((e) => {
   console.error("Fatal:", e);
-  process.exit(1);
+  notifyShutdown().finally(() => process.exit(1));
 });
