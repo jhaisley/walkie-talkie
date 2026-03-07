@@ -49,7 +49,7 @@ Walkie-Talkie solves a different problem: **real-time collaboration between agen
 |  | Cursor Automations | Walkie-Talkie |
 |---|---|---|
 | Model | Event → single agent → result | Multiple agents talk in real time |
-| Trigger | Cron, webhook, Slack, GitHub, etc. | Human starts a session |
+| Trigger | Cron, webhook, Slack, GitHub, etc. | Manual — you launch the agents |
 | Where | Cloud sandbox | Your local machine |
 | Strength | Unattended, repeatable chores | Live collaboration and ad-hoc coordination |
 
