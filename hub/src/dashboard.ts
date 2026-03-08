@@ -925,9 +925,6 @@ export function getDashboardHTML(adminToken: string): string {
         <input type="text" id="agent-dialog-name" placeholder="alice" pattern="[a-zA-Z0-9_-]+">
         <span id="agent-dialog-name-error" style="color:var(--red);font-size:11px;display:none"></span>
       </label>
-      <label>Skill command <span style="font-weight:400;color:var(--text-tertiary)">(type this after claude starts)</span>
-        <code id="agent-dialog-command" style="font-family:var(--mono);font-size:12px;padding:8px 10px;background:var(--bg-base);color:var(--text-secondary);border:1px solid var(--border-subtle);border-radius:8px;word-break:break-all">/walkie-talkie:walkie-talkie ...</code>
-      </label>
       <label>Working Directory
         <input type="text" id="agent-dialog-workdir" placeholder="/path/to/project">
       </label>
@@ -1465,23 +1462,16 @@ export function getDashboardHTML(adminToken: string): string {
     const agentDialogName = document.getElementById("agent-dialog-name");
     const agentDialogNameError = document.getElementById("agent-dialog-name-error");
     const agentDialogWorkdir = document.getElementById("agent-dialog-workdir");
-    const agentDialogCommand = document.getElementById("agent-dialog-command");
     const agentDialogAutostart = document.getElementById("agent-dialog-autostart");
 
     function updateCommandPreview() {
       const name = agentDialogName.value.trim();
       if (name && AGENT_NAME_RE.test(name)) {
-        agentDialogCommand.textContent = '/walkie-talkie:walkie-talkie ' + name;
-        agentDialogCommand.style.color = "var(--text-secondary)";
         agentDialogNameError.style.display = "none";
       } else if (name) {
-        agentDialogCommand.textContent = '/walkie-talkie:walkie-talkie ...';
-        agentDialogCommand.style.color = "var(--text-tertiary)";
         agentDialogNameError.textContent = "Use only a-z, 0-9, hyphen, underscore";
         agentDialogNameError.style.display = "block";
       } else {
-        agentDialogCommand.textContent = '/walkie-talkie:walkie-talkie ...';
-        agentDialogCommand.style.color = "var(--text-tertiary)";
         agentDialogNameError.style.display = "none";
       }
     }
