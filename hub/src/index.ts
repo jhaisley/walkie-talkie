@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { getRegisteredUsers } from "./auth.js";
 import { initGeneralChannel } from "./channels.js";
@@ -27,8 +28,11 @@ initGeneralChannel();
 
 const server = createHubServer(port, adminToken, joinToken);
 
-// Auto-launch agents only after the server is actually listening
+// After the server is listening, open the dashboard and auto-launch agents
 server.on("listening", () => {
+  execFile("open", [`http://localhost:${port}`], (err) => {
+    if (err) console.error(`[open] Failed to open browser: ${err.message}`);
+  });
   autoLaunchAgents();
 });
 
