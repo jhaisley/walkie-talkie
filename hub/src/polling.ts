@@ -84,6 +84,17 @@ export function deliverMessage(userName: string): void {
   poll.res.end(JSON.stringify({ messages }));
 }
 
+export function closeAllPolls(): void {
+  for (const [, poll] of pendingPolls) {
+    clearTimeout(poll.timer);
+    if (!poll.res.writableEnded) {
+      poll.res.writeHead(204);
+      poll.res.end();
+    }
+  }
+  pendingPolls.clear();
+}
+
 export function removePoll(userName: string): void {
   const poll = pendingPolls.get(userName);
   if (poll) {

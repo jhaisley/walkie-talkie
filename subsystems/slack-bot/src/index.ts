@@ -156,13 +156,17 @@ function formatSystemMessage(content: string): string | null {
 let slackApp: InstanceType<typeof App>;
 
 async function pollLoop(): Promise<void> {
-  while (true) {
+  while (!shuttingDown) {
     try {
       const messages = await hubPoll();
       for (const msg of messages) {
         // Handle system notifications (user join/leave)
         if (msg.from === "system") {
           console.log(`[system] ${msg.content}`);
+          if (msg.content.startsWith("RADIO_KILLED:")) {
+            console.log("[slack-bot] Received RADIO_KILLED, stopping poll loop.");
+            return;
+          }
           if (slackNotifyChannel) {
             const text = formatSystemMessage(msg.content);
             if (text) {

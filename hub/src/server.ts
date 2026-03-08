@@ -20,22 +20,30 @@ import {
 } from "./channels.js";
 import { getDashboardHTML } from "./dashboard.js";
 import {
+  dbCreateAgentConfig,
   dbCreateChannel,
+  dbDeleteAgentConfig,
   dbDeleteChannel,
   dbDeleteChannelMessages,
   dbDeleteReadCursorsForChannel,
+  dbGetAgentConfig,
   dbGetChannel,
   dbGetChannelMessages,
   dbGetRecentMessages,
   dbGetUnreadCounts,
   dbGetUserChannels,
+  dbListAgentConfigs,
   dbListChannels,
+  dbUpdateAgentConfig,
   dbUpdateReadCursor,
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
+import { launchAgent } from "./launcher.js";
 import { addPoll, isOnline, onPollDisconnect, removePoll, setOffline, setOnline } from "./polling.js";
 import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
+
+const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -463,6 +471,123 @@ const handleAdminUnreadCounts: RouteHandler = async (_req, res) => {
   sendJson(res, 200, { counts });
 };
 
+// Agent config endpoints
+const handleAdminAgentConfigs: RouteHandler = async (_req, res) => {
+  const configs = dbListAgentConfigs();
+  const result = configs.map((c) => ({
+    id: c.id,
+    name: c.name,
+    workDir: c.work_dir,
+    command: c.command,
+    autoStart: c.auto_start === 1,
+    envVars: c.env_vars ? JSON.parse(c.env_vars) : {},
+    createdAt: c.created_at,
+    online: isUserRegistered(c.name) && isOnline(c.name),
+  }));
+  sendJson(res, 200, { configs: result });
+};
+
+const handleAdminAgentConfigCreate: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as {
+    name?: string;
+    workDir?: string;
+    command?: string;
+    autoStart?: boolean;
+    envVars?: Record<string, string>;
+  };
+  if (!body.name || typeof body.name !== "string") {
+    return sendError(res, 400, "Missing or invalid 'name' field");
+  }
+  if (!AGENT_NAME_RE.test(body.name)) {
+    return sendError(res, 400, "Agent name must contain only a-z, 0-9, hyphen, underscore");
+  }
+  if (!body.workDir || typeof body.workDir !== "string") {
+    return sendError(res, 400, "Missing or invalid 'workDir' field");
+  }
+  try {
+    const id = randomUUID();
+    const config = dbCreateAgentConfig(
+      id,
+      body.name,
+      body.workDir,
+      body.command || "",
+      body.autoStart ?? false,
+      body.envVars,
+    );
+    broadcast({ type: "agent_config_create", id: config.id, name: config.name, timestamp: Date.now() });
+    console.log(`[agent-config-create] ${config.name}`);
+    sendJson(res, 200, { ok: true, id: config.id });
+  } catch (e) {
+    sendError(res, 409, (e as Error).message);
+  }
+};
+
+const handleAdminAgentConfigUpdate: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as {
+    id?: string;
+    name?: string;
+    workDir?: string;
+    autoStart?: boolean;
+    envVars?: Record<string, string> | null;
+  };
+  if (!body.id || typeof body.id !== "string") {
+    return sendError(res, 400, "Missing or invalid 'id' field");
+  }
+  if (body.name && !AGENT_NAME_RE.test(body.name)) {
+    return sendError(res, 400, "Agent name must contain only a-z, 0-9, hyphen, underscore");
+  }
+  const config = dbGetAgentConfig(body.id);
+  if (!config) {
+    return sendError(res, 404, "Agent config not found");
+  }
+  if (isUserRegistered(config.name)) {
+    return sendError(res, 409, "Agent is currently online. Kick it first.");
+  }
+  dbUpdateAgentConfig(body.id, {
+    name: body.name,
+    workDir: body.workDir,
+    autoStart: body.autoStart,
+    envVars: body.envVars,
+  });
+  const name = body.name ?? config.name;
+  broadcast({ type: "agent_config_update", id: body.id, name, timestamp: Date.now() });
+  console.log(`[agent-config-update] ${name}`);
+  sendJson(res, 200, { ok: true });
+};
+
+const handleAdminAgentConfigDelete: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { id?: string };
+  if (!body.id || typeof body.id !== "string") {
+    return sendError(res, 400, "Missing or invalid 'id' field");
+  }
+  const configToDelete = dbGetAgentConfig(body.id);
+  if (!configToDelete) {
+    return sendError(res, 404, "Agent config not found");
+  }
+  if (isUserRegistered(configToDelete.name)) {
+    return sendError(res, 409, "Agent is currently online. Kick it first.");
+  }
+  if (!dbDeleteAgentConfig(body.id)) {
+    return sendError(res, 404, "Agent config not found");
+  }
+  broadcast({ type: "agent_config_delete", id: body.id, timestamp: Date.now() });
+  console.log(`[agent-config-delete] ${body.id}`);
+  sendJson(res, 200, { ok: true });
+};
+
+const handleAdminAgentStart: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { id?: string };
+  if (!body.id || typeof body.id !== "string") {
+    return sendError(res, 400, "Missing or invalid 'id' field");
+  }
+  const config = dbGetAgentConfig(body.id);
+  if (!config) {
+    return sendError(res, 404, "Agent config not found");
+  }
+  launchAgent(config);
+  sendJson(res, 200, { ok: true });
+};
+
 const publicRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/users": { method: "GET", handler: handleUsers },
   "/channels": { method: "GET", handler: handleListChannels },
@@ -481,6 +606,11 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/admin-channel-history": { method: "GET", handler: handleAdminChannelHistory },
   "/admin-mark-read": { method: "POST", handler: handleAdminMarkRead },
   "/admin-unread-counts": { method: "GET", handler: handleAdminUnreadCounts },
+  "/admin-agent-configs": { method: "GET", handler: handleAdminAgentConfigs },
+  "/admin-agent-config-create": { method: "POST", handler: handleAdminAgentConfigCreate },
+  "/admin-agent-config-update": { method: "POST", handler: handleAdminAgentConfigUpdate },
+  "/admin-agent-config-delete": { method: "POST", handler: handleAdminAgentConfigDelete },
+  "/admin-agent-start": { method: "POST", handler: handleAdminAgentStart },
 };
 
 const protectedRoutes: Record<string, { method: string; handler: RouteHandler }> = {
