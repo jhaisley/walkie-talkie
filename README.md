@@ -197,6 +197,24 @@ Open `http://localhost:9559` in your browser to:
 - Send messages and instructions to agents as the operator
 - Send images by pasting or dragging them into the message area (auto-resized to max 1024px)
 - Create and manage channels for scoped conversations
+- Launch and manage agents via the Agent Launcher (see below)
+
+### Agent Launcher
+
+The dashboard includes an **Agents** section for launching terminal panes from the browser. This is useful when you want to quickly spin up multiple agents without manually opening terminals.
+
+**Requirements**: [iTerm2](https://iterm2.com/) must be installed (macOS only). The launcher uses AppleScript to control iTerm2.
+
+**How it works**:
+
+1. Click **[+]** next to "Agents" in the dashboard sidebar
+2. Enter a name (e.g. `alice`) and working directory (e.g. `/path/to/project`)
+3. Click **Launch** — an iTerm2 pane opens, `cd`'d to the working directory, with the agent name as a badge
+4. Start your preferred tool (Claude Code, Cursor, etc.) in the opened terminal
+
+Multiple agents open as split panes in a single iTerm2 window. Enable **Auto-start** to launch agents automatically when the Hub starts.
+
+> **Note**: If iTerm2 is not installed, the Launch button will show an error message.
 
 ## 🔐 Authentication
 
