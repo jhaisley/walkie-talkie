@@ -18,7 +18,10 @@ export type HubEvent =
   | { type: "channel_delete"; name: string; timestamp: number }
   | { type: "status"; name: string; online: boolean; timestamp: number }
   | { type: "typing"; name: string; channel: string; timestamp: number }
-  | { type: "read_update"; userName: string; channel: string; timestamp: number };
+  | { type: "read_update"; userName: string; channel: string; timestamp: number }
+  | { type: "agent_config_create"; id: string; name: string; timestamp: number }
+  | { type: "agent_config_update"; id: string; name: string; timestamp: number }
+  | { type: "agent_config_delete"; id: string; timestamp: number };
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
 
@@ -54,6 +57,17 @@ export function addSSEClient(res: ServerResponse): void {
     clients.delete(res);
     stopHeartbeat();
   });
+}
+
+export function closeAllSSEClients(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  for (const client of clients) {
+    client.end();
+  }
+  clients.clear();
 }
 
 export function broadcast(event: HubEvent): void {
