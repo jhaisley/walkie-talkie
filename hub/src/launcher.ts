@@ -50,11 +50,9 @@ function openInITerm(config: AgentConfigRow): Promise<void> {
         "  end tell",
         "end tell",
       ].join("\n")
-    : [
-        'tell application "iTerm2"',
-        `  create window with default profile command "${escapedPath}"`,
-        "end tell",
-      ].join("\n");
+    : ['tell application "iTerm2"', `  create window with default profile command "${escapedPath}"`, "end tell"].join(
+        "\n",
+      );
 
   return new Promise((resolve) => {
     execFile("osascript", ["-e", script], (err) => {
