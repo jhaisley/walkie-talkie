@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.7.0 (2026-03-09)
+
+### Features
+- Add client role (agent/bridge) for relay services (#96)
+- Add system notifications for bridge clients (#98)
+- Add agent launcher with iTerm2 integration and dashboard UI (#109)
+- Add launcher docs to README and handle missing iTerm2 gracefully (#115)
+
+### Fixes
+- Fix misleading trigger description in comparison table (#91)
+- Use @@ prefix for agent targeting in Slack bot (#103)
+- Show @@ prefix in agent reply display name (#105)
+- Show user-friendly error when port is already in use (#110)
+- Restore terminal to cooked mode on shutdown (#111)
+- Remove Claude-specific hints from agent launcher (#113)
+
+### Other
+- Add Slack bot integration section to README (#85)
+- Add Cursor Automations comparison to README (#87)
+- Move slack-bot to subsystems/ and co-launch with npm start (#94)
+- Document 'Always Show My Bot as Online' Slack setting (#100)
+
+
 ## v1.6.0 (2026-03-09)
 
 ### Features
