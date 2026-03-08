@@ -5,13 +5,7 @@ import { join } from "node:path";
 import type { AgentConfigRow } from "./db.js";
 import { dbListAgentConfigs } from "./db.js";
 
-export const SKILL_HINT_TEMPLATE = "/walkie-talkie:walkie-talkie {{name}}";
-
 let windowOpened = false;
-
-export function resolveSkillHint(name: string): string {
-  return SKILL_HINT_TEMPLATE.replace(/\{\{name\}\}/g, name);
-}
 
 function escapeAppleScript(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -22,14 +16,12 @@ function shellQuote(s: string): string {
 }
 
 function createLaunchScript(config: AgentConfigRow): string {
-  const hint = resolveSkillHint(config.name);
   const nameBase64 = Buffer.from(config.name).toString("base64");
   const scriptPath = join(tmpdir(), `wt-launch-${config.name}-${Date.now()}.sh`);
   const script = `#!/bin/zsh
 cd ${shellQuote(config.work_dir)}
 rm -f "$0"
 printf '\\033]1337;SetBadgeFormat=${nameBase64}\\007'
-printf '\\033c>>> Run: claude\\n>>> Then type: ${hint}\\n'
 exec $SHELL
 `;
   writeFileSync(scriptPath, script, { mode: 0o755 });
