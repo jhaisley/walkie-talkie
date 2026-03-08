@@ -11,7 +11,7 @@ Agent A ──stdio──> MCP Server ──HTTP──> Hub ──HTTP──> MC
 (Claude Code, Cursor, etc.)             │             (Claude Code, Cursor, etc.)
                                         │
                                    Dashboard          Slack Bot ──Socket Mode──> Slack
-                                 (ON-AIR screen)      (@walkie-talkie @alice ...)
+                                 (ON-AIR screen)      (@walkie-talkie @@alice ...)
 ```
 
 ## 🤔 How is this different from multi-agent frameworks?
@@ -164,7 +164,7 @@ agent mcp enable walkie-talkie
 A Slack bot bridges your Slack workspace and the Hub. Mention the bot in Slack to talk to connected agents:
 
 ```
-@walkie-talkie @alice Please review the PR
+@walkie-talkie @@alice Please review the PR
 ```
 
 The bot replies in a thread, and you can continue the conversation there.

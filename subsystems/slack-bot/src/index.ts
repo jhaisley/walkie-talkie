@@ -224,14 +224,14 @@ function stripBotMention(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Parse mention text: "@walkie-talkie @alice do something" or "@walkie-talkie do something"
+// Parse mention text: "@walkie-talkie @@alice do something" or "@walkie-talkie do something"
 // ---------------------------------------------------------------------------
 
 function parseCommand(text: string): { to: string; content: string } {
   const trimmed = text.trim();
 
-  // Check if the first word is @someone
-  const match = trimmed.match(/^@(\S+)\s+([\s\S]*)$/);
+  // Check if the first token is @@someone (double-@ to avoid Slack mention confusion)
+  const match = trimmed.match(/^@@(\S+)\s+([\s\S]*)$/);
   if (match) {
     return { to: `@${match[1]}`, content: match[2].trim() };
   }
@@ -257,7 +257,7 @@ async function main(): Promise<void> {
 
     if (!rawText) {
       await say({
-        text: "Usage: `@walkie-talkie @agent-name message` or `@walkie-talkie message`",
+        text: "Usage: `@walkie-talkie @@agent-name message` or `@walkie-talkie message`",
         thread_ts: event.ts,
       });
       return;
