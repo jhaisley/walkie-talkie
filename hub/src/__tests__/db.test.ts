@@ -1,19 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   dbAddChannelMember,
+  dbCreateAgentConfig,
   dbCreateChannel,
+  dbDeleteAgentConfig,
   dbDeleteChannel,
   dbDeleteChannelMessages,
   dbDeleteReadCursorsForChannel,
+  dbGetAgentConfig,
   dbGetChannel,
   dbGetChannelMessages,
   dbGetRecentMessages,
   dbGetUnreadCounts,
   dbGetUserChannels,
+  dbListAgentConfigs,
   dbListChannels,
   dbRemoveAllMembersOfChannel,
   dbRemoveChannelMember,
   dbSaveMessage,
+  dbUpdateAgentConfig,
   dbUpdateReadCursor,
   initDB,
 } from "../db.js";
@@ -203,5 +208,51 @@ describe("read cursors", () => {
     });
     const counts = dbGetUnreadCounts("bob");
     expect(counts["#all"]).toBe(1);
+  });
+});
+
+describe("agent configs", () => {
+  it("should create and retrieve an agent config", () => {
+    const config = dbCreateAgentConfig("a1", "my-agent", "/tmp", "echo hi", false);
+    expect(config.id).toBe("a1");
+    expect(config.name).toBe("my-agent");
+    expect(config.work_dir).toBe("/tmp");
+    expect(config.command).toBe("echo hi");
+    expect(config.auto_start).toBe(0);
+
+    const retrieved = dbGetAgentConfig("a1");
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.name).toBe("my-agent");
+  });
+
+  it("should list agent configs in creation order", () => {
+    dbCreateAgentConfig("b1", "agent-b", "/tmp", "echo b", false);
+    dbCreateAgentConfig("b2", "agent-c", "/tmp", "echo c", true);
+    const list = dbListAgentConfigs();
+    expect(list.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("should update an agent config", () => {
+    dbCreateAgentConfig("u1", "update-me", "/tmp", "echo old", false);
+    dbUpdateAgentConfig("u1", { name: "updated", command: "echo new", autoStart: true });
+    const config = dbGetAgentConfig("u1");
+    expect(config!.name).toBe("updated");
+    expect(config!.command).toBe("echo new");
+    expect(config!.auto_start).toBe(1);
+  });
+
+  it("should delete an agent config", () => {
+    dbCreateAgentConfig("d1", "delete-me", "/tmp", "echo del", false);
+    expect(dbDeleteAgentConfig("d1")).toBe(true);
+    expect(dbGetAgentConfig("d1")).toBeUndefined();
+  });
+
+  it("should return false when deleting non-existent config", () => {
+    expect(dbDeleteAgentConfig("nope")).toBe(false);
+  });
+
+  it("should enforce unique name constraint", () => {
+    dbCreateAgentConfig("n1", "unique-name", "/tmp", "echo 1", false);
+    expect(() => dbCreateAgentConfig("n2", "unique-name", "/tmp", "echo 2", false)).toThrow();
   });
 });

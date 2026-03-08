@@ -3,6 +3,16 @@ import Database from "better-sqlite3";
 
 import type { Message, MessageImage } from "./types.js";
 
+export interface AgentConfigRow {
+  id: string;
+  name: string;
+  work_dir: string;
+  command: string;
+  auto_start: number;
+  env_vars: string | null;
+  created_at: number;
+}
+
 export interface ChannelRow {
   name: string;
   created_by: string;
@@ -56,6 +66,24 @@ export function initDB(): void {
       PRIMARY KEY (user_name, channel)
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_configs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      work_dir TEXT NOT NULL,
+      command TEXT NOT NULL DEFAULT '',
+      auto_start INTEGER NOT NULL DEFAULT 0,
+      env_vars TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  try {
+    db.exec("ALTER TABLE agent_configs ADD COLUMN env_vars TEXT");
+  } catch {
+    /* column already exists */
+  }
 
   try {
     db.exec("ALTER TABLE messages ADD COLUMN image TEXT");
@@ -194,6 +222,74 @@ export function dbGetUnreadCounts(userName: string): Record<string, number> {
 
 export function dbDeleteReadCursorsForChannel(channel: string): void {
   db.prepare("DELETE FROM read_cursors WHERE channel = ?").run(channel);
+}
+
+// Agent config CRUD
+export function dbCreateAgentConfig(
+  id: string,
+  name: string,
+  workDir: string,
+  command: string,
+  autoStart: boolean,
+  envVars?: Record<string, string>,
+): AgentConfigRow {
+  const now = Date.now();
+  const envJson = envVars ? JSON.stringify(envVars) : null;
+  db.prepare(
+    "INSERT INTO agent_configs (id, name, work_dir, command, auto_start, env_vars, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, name, workDir, command, autoStart ? 1 : 0, envJson, now);
+  return { id, name, work_dir: workDir, command, auto_start: autoStart ? 1 : 0, env_vars: envJson, created_at: now };
+}
+
+export function dbListAgentConfigs(): AgentConfigRow[] {
+  return db.prepare("SELECT * FROM agent_configs ORDER BY created_at").all() as AgentConfigRow[];
+}
+
+export function dbGetAgentConfig(id: string): AgentConfigRow | undefined {
+  return db.prepare("SELECT * FROM agent_configs WHERE id = ?").get(id) as AgentConfigRow | undefined;
+}
+
+export function dbUpdateAgentConfig(
+  id: string,
+  updates: {
+    name?: string;
+    workDir?: string;
+    command?: string;
+    autoStart?: boolean;
+    envVars?: Record<string, string> | null;
+  },
+): boolean {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (updates.name !== undefined) {
+    fields.push("name = ?");
+    values.push(updates.name);
+  }
+  if (updates.workDir !== undefined) {
+    fields.push("work_dir = ?");
+    values.push(updates.workDir);
+  }
+  if (updates.command !== undefined) {
+    fields.push("command = ?");
+    values.push(updates.command);
+  }
+  if (updates.autoStart !== undefined) {
+    fields.push("auto_start = ?");
+    values.push(updates.autoStart ? 1 : 0);
+  }
+  if (updates.envVars !== undefined) {
+    fields.push("env_vars = ?");
+    values.push(updates.envVars ? JSON.stringify(updates.envVars) : null);
+  }
+  if (fields.length === 0) return false;
+  values.push(id);
+  const result = db.prepare(`UPDATE agent_configs SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  return result.changes > 0;
+}
+
+export function dbDeleteAgentConfig(id: string): boolean {
+  const result = db.prepare("DELETE FROM agent_configs WHERE id = ?").run(id);
+  return result.changes > 0;
 }
 
 function dbPruneAllChannel(): void {

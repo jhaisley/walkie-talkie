@@ -366,6 +366,188 @@ export function getDashboardHTML(adminToken: string): string {
     transform: scale(0.98);
   }
 
+  /* Agent list */
+  #agent-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #agent-list li {
+    padding: 7px 8px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 8px;
+    transition: background 0.15s ease;
+  }
+  #agent-list li:hover {
+    background: var(--bg-hover);
+  }
+  .agent-info {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .agent-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .agent-dot.online {
+    background: var(--green);
+    box-shadow: 0 0 8px rgba(52,211,153,0.35);
+  }
+  .agent-dot.offline {
+    background: #555;
+    box-shadow: none;
+  }
+  .agent-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+  .agent-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .agent-actions button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    opacity: 0;
+  }
+  #agent-list li:hover .agent-actions button {
+    opacity: 1;
+  }
+  .agent-launch-btn:hover {
+    border-color: var(--green-border) !important;
+    color: var(--green) !important;
+    background: var(--green-soft) !important;
+  }
+  .agent-edit-btn:hover {
+    border-color: rgba(129,140,248,0.3) !important;
+    color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+  }
+  .agent-del-btn:hover {
+    border-color: var(--red-border) !important;
+    color: var(--red) !important;
+    background: var(--red-soft) !important;
+  }
+
+  /* Agent dialog */
+  .dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .dialog {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 420px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .dialog h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+  .dialog label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dialog input, .dialog textarea {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .dialog input:focus, .dialog textarea:focus {
+    border-color: var(--accent);
+  }
+  .dialog input::placeholder, .dialog textarea::placeholder {
+    color: var(--text-tertiary);
+  }
+  .dialog textarea {
+    resize: vertical;
+    min-height: 60px;
+  }
+  .dialog .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .dialog .checkbox-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+  }
+  .dialog .dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .dialog .dialog-buttons button {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .dialog .btn-cancel {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .dialog .btn-cancel:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .dialog .btn-save {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+  }
+  .dialog .btn-save:hover {
+    opacity: 0.9;
+  }
+
   /* Messages */
   #messages {
     flex: 1;
@@ -714,6 +896,8 @@ export function getDashboardHTML(adminToken: string): string {
       <ul id="channel-list"></ul>
       <span class="sidebar-label">On Air</span>
       <ul id="user-list"></ul>
+      <span class="sidebar-label">Agents <button class="add-btn" id="add-agent-btn">+ New</button></span>
+      <ul id="agent-list"></ul>
       <button id="stop-all">Kick all agents</button>
     </div>
     <div class="message-area">
@@ -733,6 +917,27 @@ export function getDashboardHTML(adminToken: string): string {
       </div>
     </div>
   </div>
+  <div class="dialog-overlay" id="agent-dialog" style="display:none">
+    <div class="dialog">
+      <h2 id="agent-dialog-title">New Agent</h2>
+      <input type="hidden" id="agent-dialog-id">
+      <label>Name <span style="font-weight:400;color:var(--text-tertiary)">(a-z, 0-9, hyphen, underscore)</span>
+        <input type="text" id="agent-dialog-name" placeholder="alice" pattern="[a-zA-Z0-9_-]+">
+        <span id="agent-dialog-name-error" style="color:var(--red);font-size:11px;display:none"></span>
+      </label>
+      <label>Working Directory
+        <input type="text" id="agent-dialog-workdir" placeholder="/path/to/project">
+      </label>
+      <div class="checkbox-row">
+        <input type="checkbox" id="agent-dialog-autostart">
+        <label for="agent-dialog-autostart" style="flex-direction:row;gap:0">Auto-start on Hub launch</label>
+      </div>
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="agent-dialog-cancel">Cancel</button>
+        <button class="btn-save" id="agent-dialog-save">Save</button>
+      </div>
+    </div>
+  </div>
   <script>
     const ADMIN_TOKEN = "${adminToken}";
     const adminHeaders = { "Content-Type": "application/json", "Authorization": "Bearer " + ADMIN_TOKEN };
@@ -745,6 +950,8 @@ export function getDashboardHTML(adminToken: string): string {
     const channels = new Map(); // name -> { memberCount, createdBy, members }
     const typingUsers = new Map(); // name -> { timeoutId, channel }
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
+    const agentConfigs = new Map(); // id -> { name, workDir, command, autoStart, status, pid, exitCode }
+    const agentListEl = document.getElementById("agent-list");
 
     let selectedChannel = "#all";
     const unreadCounts = {}; // channel -> count
@@ -806,6 +1013,71 @@ export function getDashboardHTML(adminToken: string): string {
         if (!users.has(targetName)) setRecipient("@all");
       }
       updateChannelHeader();
+    }
+
+    function renderAgents() {
+      agentListEl.innerHTML = "";
+      for (const [id, agent] of agentConfigs) {
+        const li = document.createElement("li");
+        const info = document.createElement("span");
+        info.className = "agent-info";
+        const isOnline = users.has(agent.name) && users.get(agent.name);
+        info.innerHTML = '<span class="agent-dot ' + (isOnline ? 'online' : 'offline') + '"></span><span class="agent-name">' + agent.name + '</span>';
+        const actions = document.createElement("span");
+        actions.className = "agent-actions";
+        const launchBtn = document.createElement("button");
+        launchBtn.className = "agent-launch-btn";
+        launchBtn.textContent = "launch";
+        launchBtn.onclick = (e) => { e.stopPropagation(); agentLaunch(id); };
+        actions.appendChild(launchBtn);
+        if (!isOnline) {
+          const editBtn = document.createElement("button");
+          editBtn.className = "agent-edit-btn";
+          editBtn.textContent = "edit";
+          editBtn.onclick = (e) => { e.stopPropagation(); openAgentDialog(id, agent); };
+          actions.appendChild(editBtn);
+          const delBtn = document.createElement("button");
+          delBtn.className = "agent-del-btn";
+          delBtn.textContent = "x";
+          delBtn.onclick = (e) => { e.stopPropagation(); if (confirm("Delete agent config '" + agent.name + "'?")) agentDelete(id); };
+          actions.appendChild(delBtn);
+        }
+        li.appendChild(info);
+        li.appendChild(actions);
+        agentListEl.appendChild(li);
+      }
+    }
+
+    function agentLaunch(id) {
+      fetch("/admin-agent-start", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ id }),
+      }).then(r => r.json()).then(data => {
+        if (data.error) alert(data.error);
+      }).catch(() => {});
+    }
+
+    function agentDelete(id) {
+      fetch("/admin-agent-config-delete", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ id }),
+      }).then(r => r.json()).then(data => {
+        if (data.error) alert(data.error);
+      }).catch(() => {});
+    }
+
+    function refreshAgentConfigs() {
+      fetch("/admin-agent-configs", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+        .then(r => r.json())
+        .then(data => {
+          agentConfigs.clear();
+          for (const c of data.configs) {
+            agentConfigs.set(c.id, { name: c.name, workDir: c.workDir, autoStart: c.autoStart });
+          }
+          renderAgents();
+        }).catch(() => {});
     }
 
     function refreshChannels() {
@@ -1183,7 +1455,78 @@ export function getDashboardHTML(adminToken: string): string {
       messagesEl.innerHTML = '<div class="empty">Waiting for transmissions...</div>';
     };
 
-    // Add channel button
+    const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+    const agentDialogEl = document.getElementById("agent-dialog");
+    const agentDialogTitle = document.getElementById("agent-dialog-title");
+    const agentDialogId = document.getElementById("agent-dialog-id");
+    const agentDialogName = document.getElementById("agent-dialog-name");
+    const agentDialogNameError = document.getElementById("agent-dialog-name-error");
+    const agentDialogWorkdir = document.getElementById("agent-dialog-workdir");
+    const agentDialogAutostart = document.getElementById("agent-dialog-autostart");
+
+    function updateCommandPreview() {
+      const name = agentDialogName.value.trim();
+      if (name && AGENT_NAME_RE.test(name)) {
+        agentDialogNameError.style.display = "none";
+      } else if (name) {
+        agentDialogNameError.textContent = "Use only a-z, 0-9, hyphen, underscore";
+        agentDialogNameError.style.display = "block";
+      } else {
+        agentDialogNameError.style.display = "none";
+      }
+    }
+
+    agentDialogName.addEventListener("input", updateCommandPreview);
+
+    function openAgentDialog(id, agent) {
+      const isEdit = !!id;
+      agentDialogTitle.textContent = isEdit ? "Edit Agent" : "New Agent";
+      agentDialogId.value = id || "";
+      agentDialogName.value = agent ? agent.name : "";
+      agentDialogWorkdir.value = agent ? agent.workDir : "";
+      agentDialogAutostart.checked = agent ? agent.autoStart : false;
+      updateCommandPreview();
+      agentDialogEl.style.display = "flex";
+      agentDialogName.focus();
+    }
+
+    function closeAgentDialog() {
+      agentDialogEl.style.display = "none";
+    }
+
+    document.getElementById("agent-dialog-cancel").onclick = closeAgentDialog;
+    agentDialogEl.onclick = (e) => { if (e.target === agentDialogEl) closeAgentDialog(); };
+
+    document.getElementById("agent-dialog-save").onclick = () => {
+      const id = agentDialogId.value;
+      const name = agentDialogName.value.trim();
+      const workDir = agentDialogWorkdir.value.trim();
+      const autoStart = agentDialogAutostart.checked;
+      if (!name || !AGENT_NAME_RE.test(name)) { agentDialogName.focus(); updateCommandPreview(); return; }
+      if (!workDir) { agentDialogWorkdir.focus(); return; }
+      if (id) {
+        fetch("/admin-agent-config-update", {
+          method: "POST",
+          headers: adminHeaders,
+          body: JSON.stringify({ id, name, workDir, autoStart }),
+        }).then(r => r.json()).then(data => {
+          if (data.error) alert(data.error);
+          else closeAgentDialog();
+        }).catch(() => {});
+      } else {
+        fetch("/admin-agent-config-create", {
+          method: "POST",
+          headers: adminHeaders,
+          body: JSON.stringify({ name, workDir }),
+        }).then(r => r.json()).then(data => {
+          if (data.error) alert(data.error);
+          else closeAgentDialog();
+        }).catch(() => {});
+      }
+    };
+
+    document.getElementById("add-agent-btn").onclick = () => openAgentDialog(null, null);
+
     document.getElementById("add-channel-btn").onclick = () => {
       const name = prompt("Channel name (without #):");
       if (!name || !name.trim()) return;
@@ -1219,6 +1562,9 @@ export function getDashboardHTML(adminToken: string): string {
       renderChannels();
       updateChannelHeader();
     }).catch(() => {});
+
+    // Load agent configs
+    refreshAgentConfigs();
 
     // Load unread counts
     fetch("/admin-unread-counts", { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
@@ -1266,10 +1612,12 @@ export function getDashboardHTML(adminToken: string): string {
         if (users.has(ev.name)) {
           users.set(ev.name, ev.online);
           renderUsers();
+          renderAgents();
         }
       } else if (ev.type === "join") {
         users.set(ev.name, true);
         renderUsers();
+        renderAgents();
         refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
@@ -1280,6 +1628,7 @@ export function getDashboardHTML(adminToken: string): string {
       } else if (ev.type === "leave") {
         users.delete(ev.name);
         renderUsers();
+        renderAgents();
         refreshChannels();
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
@@ -1352,6 +1701,11 @@ export function getDashboardHTML(adminToken: string): string {
           "system channel-event leave",
           null
         );
+      } else if (ev.type === "agent_config_create" || ev.type === "agent_config_update") {
+        refreshAgentConfigs();
+      } else if (ev.type === "agent_config_delete") {
+        agentConfigs.delete(ev.id);
+        renderAgents();
       } else if (ev.type === "typing") {
         clearPendingReply(ev.name);
         if (users.has(ev.name)) users.set(ev.name, true);

@@ -156,13 +156,17 @@ function formatSystemMessage(content: string): string | null {
 let slackApp: InstanceType<typeof App>;
 
 async function pollLoop(): Promise<void> {
-  while (true) {
+  while (!shuttingDown) {
     try {
       const messages = await hubPoll();
       for (const msg of messages) {
         // Handle system notifications (user join/leave)
         if (msg.from === "system") {
           console.log(`[system] ${msg.content}`);
+          if (msg.content.startsWith("RADIO_KILLED:")) {
+            console.log("[slack-bot] Received RADIO_KILLED, stopping poll loop.");
+            return;
+          }
           if (slackNotifyChannel) {
             const text = formatSystemMessage(msg.content);
             if (text) {
@@ -191,7 +195,7 @@ async function pollLoop(): Promise<void> {
           await slackApp.client.chat.postMessage({
             channel: pending.slackChannel,
             thread_ts: pending.threadTs,
-            text: `*${msg.from}*:\n${msg.content}`,
+            text: `*@@${msg.from}*:\n${msg.content}`,
           });
         } else {
           // No pending reply — post as a new message to a default channel if configured
@@ -224,14 +228,14 @@ function stripBotMention(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Parse mention text: "@walkie-talkie @alice do something" or "@walkie-talkie do something"
+// Parse mention text: "@walkie-talkie @@alice do something" or "@walkie-talkie do something"
 // ---------------------------------------------------------------------------
 
 function parseCommand(text: string): { to: string; content: string } {
   const trimmed = text.trim();
 
-  // Check if the first word is @someone
-  const match = trimmed.match(/^@(\S+)\s+([\s\S]*)$/);
+  // Check if the first token is @@someone (double-@ to avoid Slack mention confusion)
+  const match = trimmed.match(/^@@(\S+)\s+([\s\S]*)$/);
   if (match) {
     return { to: `@${match[1]}`, content: match[2].trim() };
   }
@@ -257,7 +261,7 @@ async function main(): Promise<void> {
 
     if (!rawText) {
       await say({
-        text: "Usage: `@walkie-talkie @agent-name message` or `@walkie-talkie message`",
+        text: "Usage: `@walkie-talkie @@agent-name message` or `@walkie-talkie message`",
         thread_ts: event.ts,
       });
       return;
