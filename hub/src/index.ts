@@ -37,6 +37,10 @@ let shuttingDown = false;
 function handleShutdown(): void {
   if (shuttingDown) return;
   shuttingDown = true;
+  // Restore terminal to cooked mode if it was set to raw
+  if (process.stdin.isTTY && process.stdin.isRaw) {
+    process.stdin.setRawMode(false);
+  }
   console.log("\n[shutdown] Notifying connected users...");
   // Send RADIO_KILLED to all connected users so they disconnect gracefully
   for (const name of getRegisteredUsers()) {
