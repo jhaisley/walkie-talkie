@@ -191,7 +191,7 @@ async function pollLoop(): Promise<void> {
           await slackApp.client.chat.postMessage({
             channel: pending.slackChannel,
             thread_ts: pending.threadTs,
-            text: `*${msg.from}*:\n${msg.content}`,
+            text: `*@@${msg.from}*:\n${msg.content}`,
           });
         } else {
           // No pending reply — post as a new message to a default channel if configured
