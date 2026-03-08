@@ -584,8 +584,12 @@ const handleAdminAgentStart: RouteHandler = async (req, res) => {
   if (!config) {
     return sendError(res, 404, "Agent config not found");
   }
-  launchAgent(config);
-  sendJson(res, 200, { ok: true });
+  try {
+    await launchAgent(config);
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendError(res, 500, (e as Error).message);
+  }
 };
 
 const publicRoutes: Record<string, { method: string; handler: RouteHandler }> = {

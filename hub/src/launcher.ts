@@ -46,21 +46,22 @@ function openInITerm(config: AgentConfigRow): Promise<void> {
         "\n",
       );
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile("osascript", ["-e", script], (err) => {
       if (err) {
         console.error(`[launcher] Failed to open iTerm2 for ${config.name}: ${err.message}`);
+        reject(new Error(`Failed to open iTerm2: ${err.message}`));
       } else {
-        console.log(`[launcher] Opened iTerm2 ${windowOpened ? "tab" : "window"} for ${config.name}`);
+        console.log(`[launcher] Opened iTerm2 ${windowOpened ? "pane" : "window"} for ${config.name}`);
         windowOpened = true;
+        resolve();
       }
-      resolve();
     });
   });
 }
 
-export function launchAgent(config: AgentConfigRow): void {
-  openInITerm(config);
+export function launchAgent(config: AgentConfigRow): Promise<void> {
+  return openInITerm(config);
 }
 
 export function autoLaunchAgents(): void {
