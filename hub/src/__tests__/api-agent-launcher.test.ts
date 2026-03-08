@@ -1,5 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startTestServer, stopTestServer, type TestContext } from "./helpers/server-harness.js";
+
+vi.mock("../launcher.js", () => ({
+  launchAgent: vi.fn(),
+  autoLaunchAgents: vi.fn(),
+  resolveSkillHint: (name: string) => `/walkie-talkie:walkie-talkie ${name}`,
+  SKILL_HINT_TEMPLATE: "/walkie-talkie:walkie-talkie {{name}}",
+}));
 
 let ctx: TestContext;
 
