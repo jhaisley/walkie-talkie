@@ -756,6 +756,13 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
   }
 
   const server = createServer(handleRequest);
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`Error: Port ${port} is already in use. Is another Hub instance running?`);
+      process.exit(1);
+    }
+    throw err;
+  });
   server.listen(port, "127.0.0.1", () => {
     console.log(`Walkie-Talkie Hub listening on http://localhost:${port}`);
   });
