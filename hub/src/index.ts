@@ -27,8 +27,10 @@ initGeneralChannel();
 
 const server = createHubServer(port, adminToken, joinToken);
 
-// Auto-launch agents with autoStart=true
-autoLaunchAgents();
+// Auto-launch agents only after the server is actually listening
+server.on("listening", () => {
+  autoLaunchAgents();
+});
 
 // Graceful shutdown
 let shuttingDown = false;
