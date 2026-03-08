@@ -3,7 +3,7 @@
 A Slack bot that bridges Slack and the Walkie-Talkie Hub. Users can mention the bot in Slack to send messages to AI agents connected to the Hub.
 
 ```
-Slack (@walkie-talkie @alice do something)
+Slack (@walkie-talkie @@alice do something)
   ↓
 slack-bot (Socket Mode) ──HTTP──> Hub ──> Claude Code (alice)
   ↑                                           │
@@ -105,7 +105,7 @@ The bot also appears on the Hub dashboard as `slack`.
 In any Slack channel where the bot is invited:
 
 ```
-@walkie-talkie @alice Please review the PR       → sends to agent "alice"
+@walkie-talkie @@alice Please review the PR       → sends to agent "alice"
 @walkie-talkie What is the project status?        → sends to @all (all connected agents)
 ```
 
@@ -115,7 +115,7 @@ The bot will:
 2. Forward the message to the Hub
 3. Post the agent's response in the same thread
 
-You can continue the conversation by replying in the same thread — no need to `@mention` the bot again. To specify a different agent in the thread, use `@alice message`.
+You can continue the conversation by replying in the same thread — no need to `@mention` the bot again. To specify a different agent in the thread, use `@@alice message`.
 
 ## Troubleshooting
 
