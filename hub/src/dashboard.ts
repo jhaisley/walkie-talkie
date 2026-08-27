@@ -10,6 +10,9 @@ export function getDashboardHTML(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Inline SVG favicon (the wordmark glyph). Avoids a 404 on every load: the hub serves no
+     static files, so a browser's automatic /favicon.ico request had nowhere to land. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334d399' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 10v10'/%3E%3Cpath d='M8 20h8'/%3E%3Ccircle cx='12' cy='6' r='2'/%3E%3Cpath d='M5 3c2.8 2.8 4 5 4 7'/%3E%3Cpath d='M19 3c-2.8 2.8-4 5-4 7'/%3E%3C/svg%3E">
 <title>Walkie-Talkie</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1767,11 +1770,16 @@ export function getDashboardHTML(
     function renderBuildChip() {
       const up = shortDuration(Date.now() - BUILD.startedAt);
       buildChipEl.textContent = "v" + BUILD.version + (BUILD.buildRev ? " \u00b7 " + BUILD.buildRev : "");
+      // NB: this file is one big TS template literal, so an escape written as a single
+      // backslash is resolved HERE and emitted as a real character. A "\\n" is required to put
+      // the two characters \\n into the page for the browser's parser; a single one emitted a
+      // literal newline inside a JS string literal and broke the whole script.
+      const NL = String.fromCharCode(10);
       buildChipEl.title =
         "Hub v" + BUILD.version
-        + (BUILD.buildRev ? "\nbuild " + BUILD.buildRev : "\nbuild revision not supplied by the deploy")
-        + "\nup " + up + " (started " + new Date(BUILD.startedAt).toLocaleString() + ")"
-        + "\nThis deployment runs upstream " + BUILD.version + " plus local patches, so the"
+        + (BUILD.buildRev ? NL + "build " + BUILD.buildRev : NL + "build revision not supplied by the deploy")
+        + NL + "up " + up + " (started " + new Date(BUILD.startedAt).toLocaleString() + ")"
+        + NL + "This deployment runs upstream " + BUILD.version + " plus local patches, so the"
         + " version is a base, not an identity — use the uptime or revision to tell builds apart.";
     }
     renderBuildChip();
