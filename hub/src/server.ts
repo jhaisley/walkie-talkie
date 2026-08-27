@@ -39,6 +39,7 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { launchAgent } from "./launcher.js";
+import { getBuildInfo } from "./version.js";
 import {
   addPoll,
   getLastSeen,
@@ -608,7 +609,12 @@ const handleAdminAgentStart: RouteHandler = async (req, res) => {
   }
 };
 
+const handleVersion: RouteHandler = async (_req, res) => {
+  sendJson(res, 200, getBuildInfo());
+};
+
 const publicRoutes: Record<string, { method: string; handler: RouteHandler }> = {
+  "/version": { method: "GET", handler: handleVersion },
   "/users": { method: "GET", handler: handleUsers },
   "/channels": { method: "GET", handler: handleListChannels },
 };
@@ -736,7 +742,7 @@ export function createHubServer(
       // the dashboard derives the installer's address from the host it was loaded from, which
       // is correct whenever the two are reached directly. Set this only when the hub is behind
       // a proxy that does not also front the installer.
-      res.end(getDashboardHTML(adminToken, process.env.WALKIE_TALKIE_INSTALLER_URL ?? ""));
+      res.end(getDashboardHTML(adminToken, process.env.WALKIE_TALKIE_INSTALLER_URL ?? "", getBuildInfo()));
       return;
     }
     if (path === "/events" && req.method === "GET") {
