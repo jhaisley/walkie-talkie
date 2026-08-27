@@ -317,6 +317,23 @@ export function getDashboardHTML(adminToken: string): string {
     background: #555;
     box-shadow: none;
   }
+  /* Registered and not detected-offline, but no long-poll is open and the last one
+     started a while ago — i.e. nobody is actually listening on this handle. Distinct
+     from .offline, which means the hub already saw the connection drop. */
+  .user-dot.stale {
+    background: var(--yellow);
+    box-shadow: 0 0 8px rgba(251,191,36,0.35);
+  }
+  .stale-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 4px;
+    color: var(--yellow);
+    background: var(--yellow-soft);
+    flex-shrink: 0;
+  }
   .user-name {
     font-weight: 500;
     overflow: hidden;
@@ -1021,6 +1038,42 @@ export function getDashboardHTML(adminToken: string): string {
     const statusEl = document.getElementById("status");
     const channelHeaderEl = document.getElementById("channel-header");
     const users = new Map(); // name -> online (boolean)
+
+    // Per-user listener liveness from GET /users: name -> { hasActivePoll, lastSeen, firstSeen }.
+    // Kept separate from the users map because SSE never carries these fields — join/leave/
+    // status events only report online — so these are refreshed by polling /users, not pushed.
+    const liveness = new Map();
+
+    // A handle is "stale" when the hub still considers it registered and online, but no
+    // long-poll is open and none has started recently. hasActivePoll is the primary signal:
+    // lastSeen alone is unreliable because it is stamped at poll START and a healthy poll can
+    // hold open for up to an hour, so a quiet-but-alive listener reads as ancient.
+    //
+    // The grace exists only to cover the brief gap between one poll returning and the next
+    // being issued; without it every agent would blink amber on each poll cycle.
+    const STALE_AFTER_MS = 60_000;
+    const USERS_REFRESH_MS = 15_000;
+
+    // Milliseconds a handle has been not-listening, or null if it is fine (or offline, where
+    // the grey dot already says it). Falls back to when we first observed a user that has
+    // never polled, so a just-joined agent gets the same grace instead of flashing amber.
+    function staleFor(name) {
+      if (!users.get(name)) return null;
+      const l = liveness.get(name);
+      if (!l || l.hasActivePoll) return null;
+      const since = l.lastSeen ?? l.firstSeen;
+      const age = Date.now() - since;
+      return age > STALE_AFTER_MS ? age : null;
+    }
+
+    function shortDuration(ms) {
+      const s = Math.round(ms / 1000);
+      if (s < 60) return s + "s";
+      const m = Math.round(s / 60);
+      if (m < 60) return m + "m";
+      const h = Math.floor(m / 60);
+      return h + "h" + (m % 60 ? String(m % 60) + "m" : "");
+    }
     const channels = new Map(); // name -> { memberCount, createdBy, members }
     const typingUsers = new Map(); // name -> { timeoutId, channel }
     const pendingReply = new Map(); // name -> timeoutId (30s no-TYPING → grey)
@@ -1069,10 +1122,17 @@ export function getDashboardHTML(adminToken: string): string {
         const li = document.createElement("li");
         const info = document.createElement("span");
         info.className = "user-info";
-        const dotCls = online ? "user-dot" : "user-dot offline";
+        const stale = staleFor(u);
+        const dotCls = !online ? "user-dot offline" : stale ? "user-dot stale" : "user-dot";
         const tu = typingUsers.get(u);
         const typingHtml = tu && tu.channel === selectedChannel ? '<span class="typing-indicator">typing...</span>' : '';
-        info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>' + typingHtml;
+        // Amber dot + elapsed badge: registered, but nothing is polling on this handle.
+        const staleHtml = stale ? '<span class="stale-badge">' + shortDuration(stale) + '</span>' : '';
+        info.innerHTML = '<span class="' + dotCls + '"></span><span class="user-name">' + u + '</span>' + typingHtml + staleHtml;
+        if (stale) {
+          li.title = u + " is registered but not polling — no listener has been open for "
+            + shortDuration(stale) + ". The agent may be busy, or its listener may have died.";
+        }
         const btn = document.createElement("button");
         btn.className = "kick-btn";
         btn.textContent = "kick";
@@ -1623,11 +1683,31 @@ export function getDashboardHTML(adminToken: string): string {
       }).catch(() => {});
     }
 
-    // Fetch initial data
-    fetch("/users").then(r => r.json()).then(data => {
-      for (const u of data.users) users.set(u.name, u.online);
-      renderUsers();
-    }).catch(() => {});
+    // Fetch initial data. /users is the only source of hasActivePoll/lastSeen — SSE carries
+    // only online — so it is re-polled on an interval to keep the stale indicator honest
+    // rather than frozen at page-load state.
+    function refreshUsers() {
+      return fetch("/users").then(r => r.json()).then(data => {
+        const now = Date.now();
+        const seen = new Set();
+        for (const u of data.users) {
+          seen.add(u.name);
+          users.set(u.name, u.online);
+          const prev = liveness.get(u.name);
+          liveness.set(u.name, {
+            hasActivePoll: u.hasActivePoll,
+            lastSeen: u.lastSeen ?? null,
+            // Keep the first observation so a user that has never polled still ages from a
+            // fixed point instead of resetting its grace on every refresh.
+            firstSeen: prev ? prev.firstSeen : now,
+          });
+        }
+        for (const name of liveness.keys()) if (!seen.has(name)) liveness.delete(name);
+        renderUsers();
+      }).catch(() => {});
+    }
+    refreshUsers();
+    setInterval(refreshUsers, USERS_REFRESH_MS);
 
     fetch("/channels").then(r => r.json()).then(data => {
       for (const ch of data.channels) {
