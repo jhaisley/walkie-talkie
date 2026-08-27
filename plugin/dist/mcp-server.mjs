@@ -3222,8 +3222,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3422,8 +3422,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6785,12 +6785,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a2;
       var _b;
       (_a2 = (_b = ajv.opts.code).formats) !== null && _a2 !== void 0 ? _a2 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7568,10 +7568,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7954,11 +7954,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -8141,7 +8141,7 @@ function formatError(error48, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error48, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error49, path2 = []) => {
+  const processError = (error49, path3 = []) => {
     var _a2, _b;
     for (const issue2 of error49.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -8151,7 +8151,7 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path3, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8183,8 +8183,8 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path2 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path2) {
+  const path3 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path3) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -20161,13 +20161,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path2 = ref.slice(1).split("/").filter(Boolean);
-  if (path2.length === 0) {
+  const path3 = ref.slice(1).split("/").filter(Boolean);
+  if (path3.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path2[0] === defsKey) {
-    const key = path2[1];
+  if (path3[0] === defsKey) {
+    const key = path3[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -22177,10 +22177,10 @@ var StdioServerTransport = class {
 };
 
 // mcp-server/src/tools.ts
-import fs from "node:fs";
+import fs2 from "node:fs";
 import http2 from "node:http";
 import https2 from "node:https";
-import path from "node:path";
+import path2 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/zod/v3/helpers/util.js
@@ -22542,8 +22542,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -22658,11 +22658,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -30290,6 +30290,22 @@ var HubClient = class {
   }
 };
 
+// mcp-server/src/helpers.ts
+import fs from "node:fs";
+import path from "node:path";
+function resolveWaitScript(thisDir, exists = fs.existsSync) {
+  const candidates = [
+    path.resolve(thisDir, "..", "bin", "radio-wait.sh"),
+    path.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
+  ];
+  return candidates.find(exists) ?? candidates[0];
+}
+function formatConnectedUsers(users) {
+  if (users.length === 0) return "No users connected.";
+  const rendered = users.map((u) => u.online ? u.name : `${u.name} (offline)`).join(", ");
+  return `Connected users: ${rendered}`;
+}
+
 // mcp-server/src/tools.ts
 var MIME_TYPES = {
   ".png": "image/png",
@@ -30299,7 +30315,7 @@ var MIME_TYPES = {
   ".webp": "image/webp"
 };
 function getMimeType(source) {
-  const ext = path.extname(source).toLowerCase();
+  const ext = path2.extname(source).toLowerCase();
   return MIME_TYPES[ext] ?? "image/png";
 }
 function fetchUrl(url2) {
@@ -30416,7 +30432,7 @@ function createMcpServer(hubUrl2, joinTok) {
         if (source.startsWith("http://") || source.startsWith("https://")) {
           buf = await fetchUrl(source);
         } else {
-          buf = fs.readFileSync(source);
+          buf = fs2.readFileSync(source);
         }
         const data = buf.toString("base64");
         const mimeType = getMimeType(source);
@@ -30593,7 +30609,7 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
       }
       try {
         const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
-        const userText = users.length > 0 ? `Connected users: ${users.join(", ")}` : "No users connected.";
+        const userText = formatConnectedUsers(users);
         const channelText = channels.length > 0 ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}` : "No channels.";
         return {
           content: [
@@ -30742,8 +30758,7 @@ ${channelText}`
           isError: true
         };
       }
-      const thisFile = fileURLToPath(import.meta.url);
-      const waitScript = path.resolve(path.dirname(thisFile), "..", "bin", "radio-wait.sh");
+      const waitScript = resolveWaitScript(path2.dirname(fileURLToPath(import.meta.url)));
       return {
         content: [
           {
