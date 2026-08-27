@@ -1103,24 +1103,30 @@ export function getDashboardHTML(
         it reinstalls the MCP server and refreshes the token.</p>
 
       <div class="connect-step">
-        <span class="connect-label">Linux &middot; macOS &middot; WSL</span>
+        <span class="connect-label">Linux &middot; macOS &middot; WSL &mdash; Claude Code</span>
         <div class="connect-cmd"><code id="connect-sh"></code><button class="copy-btn" data-copy="connect-sh">Copy</button></div>
       </div>
 
       <div class="connect-step">
-        <span class="connect-label">Windows (PowerShell)</span>
+        <span class="connect-label">Windows &mdash; Claude Code</span>
         <div class="connect-cmd"><code id="connect-ps"></code><button class="copy-btn" data-copy="connect-ps">Copy</button></div>
       </div>
 
       <div class="connect-step">
+        <span class="connect-label">Windows &mdash; Gemini CLI</span>
+        <div class="connect-cmd"><code id="connect-ps-gemini"></code><button class="copy-btn" data-copy="connect-ps-gemini">Copy</button></div>
+      </div>
+
+      <div class="connect-step">
         <span class="connect-label">Then</span>
-        <p class="connect-note"><strong>Restart your agent</strong> — the MCP server is spawned at
+        <p class="connect-note"><strong>Restart your CLI</strong> — the MCP server is spawned at
           startup, so a running session keeps the old build. Then run
           <code class="inline-code">/walkie-talkie &lt;yourname&gt;</code>.</p>
       </div>
 
-      <p class="connect-note connect-prereq">Requires Node 18+, the <code class="inline-code">claude</code> CLI,
-        and network access to this host. The installer checks all three before changing anything.</p>
+      <p class="connect-note connect-prereq">Requires Node 18+, the matching CLI
+        (<code class="inline-code">claude</code> or <code class="inline-code">gemini</code>), and network
+        access to this host. The installer checks all three before changing anything.</p>
 
       <div class="dialog-buttons">
         <button class="btn-cancel" id="connect-dialog-close">Close</button>
@@ -1785,6 +1791,9 @@ export function getDashboardHTML(
       "curl -fsSL " + installerBase + "/install.sh | bash";
     document.getElementById("connect-ps").textContent =
       "irm " + installerBase + "/install.ps1 | iex";
+    // Same installer, rendered for the gemini CLI — see installer/render.sh on the hub host.
+    document.getElementById("connect-ps-gemini").textContent =
+      "irm " + installerBase + "/install-gemini.ps1 | iex";
 
     function openConnectDialog() { connectDialogEl.style.display = "flex"; }
     function closeConnectDialog() { connectDialogEl.style.display = "none"; }
