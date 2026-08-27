@@ -1,4 +1,10 @@
-export function getDashboardHTML(adminToken: string, installerUrl = ""): string {
+import type { BuildInfo } from "./version.js";
+
+export function getDashboardHTML(
+  adminToken: string,
+  installerUrl = "",
+  build: BuildInfo = { version: "unknown", buildRev: null, startedAt: Date.now() },
+): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -547,6 +553,21 @@ export function getDashboardHTML(adminToken: string, installerUrl = ""): string 
     cursor: pointer;
     transition: all 0.15s ease;
   }
+  /* Build identity beside the wordmark */
+  .build-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 5px;
+    color: var(--text-tertiary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    cursor: default;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
   /* Connect / installer modal */
   .connect-dialog { width: 560px; gap: 14px; }
   .connect-lead, .connect-note {
@@ -995,7 +1016,8 @@ export function getDashboardHTML(adminToken: string, installerUrl = ""): string 
   @media (max-width: 768px) {
     .menu-toggle { display: flex; }
     header { padding: 0 12px; gap: 10px; }
-    .header-sep, header h1 { display: none; }
+    /* Header is tight at phone widths; the wordmark and the diagnostic chip both go. */
+    .header-sep, header h1, .build-chip { display: none; }
     #channel-header { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #channel-header .channel-members { display: none; }
     .filter-btn, .clear-btn { padding: 4px 9px; }
@@ -1036,6 +1058,7 @@ export function getDashboardHTML(adminToken: string, installerUrl = ""): string 
         <svg viewBox="0 0 24 24"><path d="M12 10v10"/><path d="M8 20h8"/><circle cx="12" cy="6" r="2"/><path d="M5 3c2.8 2.8 4 5 4 7" opacity=".6"/><path d="M19 3c-2.8 2.8-4 5-4 7" opacity=".6"/></svg>
       </div>
       <h1>Walkie-Talkie</h1>
+      <span class="build-chip" id="build-chip" title=""></span>
     </div>
     <div class="header-sep"></div>
     <span id="status">connected</span>
@@ -1131,6 +1154,7 @@ export function getDashboardHTML(adminToken: string, installerUrl = ""): string 
     // Optional WALKIE_TALKIE_INSTALLER_URL. Empty when unset, in which case the client derives
     // a same-host default — the dashboard and installer are served from the same machine.
     const INSTALLER_URL = "${installerUrl}";
+    const BUILD = { version: "${build.version}", buildRev: ${build.buildRev ? `"${build.buildRev}"` : "null"}, startedAt: ${build.startedAt} };
     const adminHeaders = { "Content-Type": "application/json", "Authorization": "Bearer " + ADMIN_TOKEN };
     const messagesEl = document.getElementById("messages");
     const userListEl = document.getElementById("user-list");
@@ -1727,6 +1751,26 @@ export function getDashboardHTML(adminToken: string, installerUrl = ""): string 
     function closeAgentDialog() {
       agentDialogEl.style.display = "none";
     }
+
+    // --- Build identity ---------------------------------------------------------------
+    // Shows the release the build is based on plus how long this process has been up. Uptime
+    // is the part that actually answers "is this the build I just deployed?" — a hub that
+    // started a minute ago is the one you just pushed — and it needs no build-time plumbing.
+    // The short revision appears only when the deploy supplied WALKIE_TALKIE_BUILD_REV.
+    const buildChipEl = document.getElementById("build-chip");
+    function renderBuildChip() {
+      const up = shortDuration(Date.now() - BUILD.startedAt);
+      buildChipEl.textContent = "v" + BUILD.version + (BUILD.buildRev ? " \u00b7 " + BUILD.buildRev : "");
+      buildChipEl.title =
+        "Hub v" + BUILD.version
+        + (BUILD.buildRev ? "\nbuild " + BUILD.buildRev : "\nbuild revision not supplied by the deploy")
+        + "\nup " + up + " (started " + new Date(BUILD.startedAt).toLocaleString() + ")"
+        + "\nThis deployment runs upstream " + BUILD.version + " plus local patches, so the"
+        + " version is a base, not an identity — use the uptime or revision to tell builds apart.";
+    }
+    renderBuildChip();
+    // Cheap: only rewrites a tooltip, and keeps the uptime honest on a long-lived tab.
+    setInterval(renderBuildChip, 30_000);
 
     // --- Connect modal: how to install the MCP server on another machine ---------------
     // The installer is a sibling service on the same host, one port over, so the base URL is
