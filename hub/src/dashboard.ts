@@ -873,10 +873,83 @@ export function getDashboardHTML(adminToken: string): string {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+
+  /* Mobile sidebar toggle — hidden on desktop */
+  .menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .menu-toggle:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+  .menu-toggle svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 52px 0 0 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 40;
+  }
+  #sidebar-backdrop.open { display: block; }
+
+  /* Responsive: phones / narrow viewports */
+  @media (max-width: 768px) {
+    .menu-toggle { display: flex; }
+    header { padding: 0 12px; gap: 10px; }
+    .header-sep, header h1 { display: none; }
+    #channel-header { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #channel-header .channel-members { display: none; }
+    .filter-btn, .clear-btn { padding: 4px 9px; }
+
+    /* Sidebar slides in as an off-canvas drawer */
+    #sidebar {
+      position: fixed;
+      top: 52px;
+      bottom: 0;
+      left: 0;
+      z-index: 50;
+      width: 78%;
+      max-width: 300px;
+      transform: translateX(-100%);
+      transition: transform 0.22s cubic-bezier(0.16,1,0.3,1);
+    }
+    #sidebar.open { transform: translateX(0); }
+
+    #messages { padding: 14px 14px; }
+    .msg { font-size: 15px; }
+    .msg-image img { max-width: 100%; }
+
+    /* Input bar wraps: full-width textarea on top, tags + Send below */
+    .input-bar { flex-wrap: wrap; padding: 10px 12px; gap: 6px; }
+    .input-bar-wrapper { order: 0; flex-basis: 100%; min-width: 0; }
+    .input-tag { order: 1; margin-bottom: 0; }
+    .send-btn { order: 2; margin-left: auto; }
+  }
 </style>
 </head>
 <body>
   <header>
+    <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
+    </button>
     <div class="logo">
       <div class="logo-icon">
         <svg viewBox="0 0 24 24"><path d="M12 10v10"/><path d="M8 20h8"/><circle cx="12" cy="6" r="2"/><path d="M5 3c2.8 2.8 4 5 4 7" opacity=".6"/><path d="M19 3c-2.8 2.8-4 5-4 7" opacity=".6"/></svg>
@@ -890,6 +963,7 @@ export function getDashboardHTML(adminToken: string): string {
     <button class="filter-btn" id="filter-btn">My messages</button>
     <button class="clear-btn" id="clear-btn">Clear</button>
   </header>
+  <div id="sidebar-backdrop"></div>
   <div class="container">
     <div id="sidebar">
       <span class="sidebar-label">Channels <button class="add-btn" id="add-channel-btn">+ New</button></span>
@@ -1726,6 +1800,20 @@ export function getDashboardHTML(adminToken: string): string {
       statusEl.textContent = "disconnected";
       statusEl.className = "disconnected";
     };
+
+    // Mobile sidebar drawer toggle
+    const sidebarEl = document.getElementById("sidebar");
+    const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+    function setSidebar(open) {
+      sidebarEl.classList.toggle("open", open);
+      sidebarBackdrop.classList.toggle("open", open);
+    }
+    document.getElementById("menu-toggle").addEventListener("click", () => {
+      setSidebar(!sidebarEl.classList.contains("open"));
+    });
+    sidebarBackdrop.addEventListener("click", () => setSidebar(false));
+    // Close the drawer after selecting a channel
+    channelListEl.addEventListener("click", () => setSidebar(false));
   </script>
 </body>
 </html>`;
