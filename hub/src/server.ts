@@ -639,7 +639,12 @@ function authenticateBearer(req: IncomingMessage, expected: string): boolean {
 const STALE_GRACE_MS = 30_000; // 30 seconds before auto-unregister
 const staleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function createHubServer(port: number, adminToken: string, joinToken: string): import("node:http").Server {
+export function createHubServer(
+  port: number,
+  adminToken: string,
+  joinToken: string,
+  host = "127.0.0.1",
+): import("node:http").Server {
   // When a poll connection drops unexpectedly, mark user offline and start grace timer
   onPollDisconnect((userName) => {
     if (!isUserRegistered(userName)) return;
@@ -767,8 +772,8 @@ export function createHubServer(port: number, adminToken: string, joinToken: str
     }
     throw err;
   });
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`Walkie-Talkie Hub listening on http://localhost:${port}`);
+  server.listen(port, host, () => {
+    console.log(`Walkie-Talkie Hub listening on http://${host}:${port}`);
   });
   return server;
 }

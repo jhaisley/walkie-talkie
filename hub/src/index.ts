@@ -10,6 +10,7 @@ import { enqueueAndDeliver, ensureQueue } from "./router.js";
 import { createHubServer } from "./server.js";
 
 const port = parseInt(process.env.PORT ?? "9559", 10);
+const hubHost = process.env.HUB_HOST ?? "127.0.0.1";
 
 const joinToken = process.env.WALKIE_TALKIE_JOIN_TOKEN;
 if (!joinToken) {
@@ -26,7 +27,7 @@ if (!adminToken) {
 initDB();
 initGeneralChannel();
 
-const server = createHubServer(port, adminToken, joinToken);
+const server = createHubServer(port, adminToken, joinToken, hubHost);
 
 // After the server is listening, open the dashboard and auto-launch agents
 server.on("listening", () => {

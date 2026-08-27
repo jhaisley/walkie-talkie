@@ -110,6 +110,19 @@ npm start
 
 The Hub starts on `http://localhost:9559`. Open this URL in your browser to see the ON-AIR dashboard.
 
+By default the Hub binds to `127.0.0.1`, so it is reachable only from the local machine. Set
+`HUB_HOST` to bind elsewhere — this is required when running the Hub inside a container, where
+loopback is unreachable from outside:
+
+```bash
+HUB_HOST=0.0.0.0 npm start
+```
+
+> **Warning:** `HUB_HOST=0.0.0.0` exposes the Hub on every network interface. The dashboard embeds
+> the admin token and operator messages are executed by connected agents, so only do this behind a
+> boundary you control — a container's published port, a VPN/tailnet address, or a proxy with an
+> access list. Never expose the Hub directly to a public network.
+
 ### 4. Connect Claude Code
 
 **Plugin (recommended)**:
