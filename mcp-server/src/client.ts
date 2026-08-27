@@ -217,10 +217,15 @@ export class HubClient {
   }
 
   async users(token: string): Promise<Array<{ name: string; online: boolean; role: string }>> {
-    // The hub's GET /users returns objects ({ name, online, role }), not bare
-    // strings — see hub handleUsers + its api-register/api-admin tests. The
-    // prior `string[]` typing was wrong and caused callers to render
-    // "[object Object]" when joining the array.
+    // The hub's GET /users returns objects, not bare strings — see hub handleUsers +
+    // its api-register/api-admin tests. The prior `string[]` typing was wrong and
+    // caused callers to render "[object Object]" when joining the array.
+    //
+    // The hub also returns lastSeen/hasActivePoll per user. They are deliberately not
+    // declared here: no mcp-server caller reads them, and widening this type would
+    // oblige every consumer to handle fields it does not use. Structural typing means
+    // the extra fields pass through harmlessly. If a tool ever needs them, widen here
+    // rather than casting at the call site.
     const res = await this.request<{ users: Array<{ name: string; online: boolean; role: string }> }>({
       method: "GET",
       path: "/users",

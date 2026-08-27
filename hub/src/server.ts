@@ -39,7 +39,16 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { launchAgent } from "./launcher.js";
-import { addPoll, getLastSeen, isOnline, onPollDisconnect, removePoll, setOffline, setOnline } from "./polling.js";
+import {
+  addPoll,
+  getLastSeen,
+  hasActivePoll,
+  isOnline,
+  onPollDisconnect,
+  removePoll,
+  setOffline,
+  setOnline,
+} from "./polling.js";
 import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
 

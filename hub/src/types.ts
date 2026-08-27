@@ -58,7 +58,15 @@ export interface PollResponse {
 }
 
 export interface UsersResponse {
-  users: Array<{ name: string; online: boolean; role: string }>;
+  users: Array<{
+    name: string;
+    online: boolean;
+    role: string;
+    /** Epoch ms of the user's most recent poll; null if they have never polled. */
+    lastSeen: number | null;
+    /** Whether the user has an open long-poll right now — the reliable liveness signal. */
+    hasActivePoll: boolean;
+  }>;
 }
 
 export interface ErrorResponse {
