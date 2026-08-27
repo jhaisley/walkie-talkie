@@ -1,4 +1,4 @@
-export function getDashboardHTML(adminToken: string): string {
+export function getDashboardHTML(adminToken: string, installerUrl = ""): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -547,6 +547,70 @@ export function getDashboardHTML(adminToken: string): string {
     cursor: pointer;
     transition: all 0.15s ease;
   }
+  /* Connect / installer modal */
+  .connect-dialog { width: 560px; gap: 14px; }
+  .connect-lead, .connect-note {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .connect-prereq { color: var(--text-tertiary); }
+  .connect-step { display: flex; flex-direction: column; gap: 6px; }
+  .connect-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .connect-cmd {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 8px 8px 10px;
+  }
+  .connect-cmd code {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .inline-code {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+  .copy-btn {
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 3px 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    align-self: center;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .copy-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .copy-btn.copied { color: var(--green); border-color: var(--green-border); background: var(--green-soft); }
+  @media (max-width: 768px) {
+    .connect-dialog { width: 100%; padding: 18px; }
+    .connect-cmd { flex-direction: column; align-items: stretch; gap: 6px; }
+    .copy-btn { align-self: flex-start; }
+  }
   .dialog .btn-cancel {
     background: transparent;
     color: var(--text-secondary);
@@ -977,6 +1041,7 @@ export function getDashboardHTML(adminToken: string): string {
     <span id="status">connected</span>
     <span id="channel-header"></span>
     <div class="header-spacer"></div>
+    <button class="filter-btn" id="connect-btn" title="How to connect an agent">Connect</button>
     <button class="filter-btn" id="filter-btn">My messages</button>
     <button class="clear-btn" id="clear-btn">Clear</button>
   </header>
@@ -1008,6 +1073,38 @@ export function getDashboardHTML(adminToken: string): string {
       </div>
     </div>
   </div>
+  <div class="dialog-overlay" id="connect-dialog" style="display:none">
+    <div class="dialog connect-dialog">
+      <h2>Connect an agent</h2>
+      <p class="connect-lead">Run this on the machine you want to connect. It is safe to re-run —
+        it reinstalls the MCP server and refreshes the token.</p>
+
+      <div class="connect-step">
+        <span class="connect-label">Linux &middot; macOS &middot; WSL</span>
+        <div class="connect-cmd"><code id="connect-sh"></code><button class="copy-btn" data-copy="connect-sh">Copy</button></div>
+      </div>
+
+      <div class="connect-step">
+        <span class="connect-label">Windows (PowerShell)</span>
+        <div class="connect-cmd"><code id="connect-ps"></code><button class="copy-btn" data-copy="connect-ps">Copy</button></div>
+      </div>
+
+      <div class="connect-step">
+        <span class="connect-label">Then</span>
+        <p class="connect-note"><strong>Restart your agent</strong> — the MCP server is spawned at
+          startup, so a running session keeps the old build. Then run
+          <code class="inline-code">/walkie-talkie &lt;yourname&gt;</code>.</p>
+      </div>
+
+      <p class="connect-note connect-prereq">Requires Node 18+, the <code class="inline-code">claude</code> CLI,
+        and network access to this host. The installer checks all three before changing anything.</p>
+
+      <div class="dialog-buttons">
+        <button class="btn-cancel" id="connect-dialog-close">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="dialog-overlay" id="agent-dialog" style="display:none">
     <div class="dialog">
       <h2 id="agent-dialog-title">New Agent</h2>
@@ -1031,6 +1128,9 @@ export function getDashboardHTML(adminToken: string): string {
   </div>
   <script>
     const ADMIN_TOKEN = "${adminToken}";
+    // Optional WALKIE_TALKIE_INSTALLER_URL. Empty when unset, in which case the client derives
+    // a same-host default — the dashboard and installer are served from the same machine.
+    const INSTALLER_URL = "${installerUrl}";
     const adminHeaders = { "Content-Type": "application/json", "Authorization": "Bearer " + ADMIN_TOKEN };
     const messagesEl = document.getElementById("messages");
     const userListEl = document.getElementById("user-list");
@@ -1626,6 +1726,58 @@ export function getDashboardHTML(adminToken: string): string {
 
     function closeAgentDialog() {
       agentDialogEl.style.display = "none";
+    }
+
+    // --- Connect modal: how to install the MCP server on another machine ---------------
+    // The installer is a sibling service on the same host, one port over, so the base URL is
+    // derived from wherever the operator loaded this dashboard. That is correct by
+    // construction for a direct connection. WALKIE_TALKIE_INSTALLER_URL overrides it for the
+    // case where the hub is reached through a proxy that does not also front the installer.
+    const INSTALLER_PORT = "9558";
+    const installerBase = INSTALLER_URL || (location.protocol + "//" + location.hostname + ":" + INSTALLER_PORT);
+    const connectDialogEl = document.getElementById("connect-dialog");
+
+    document.getElementById("connect-sh").textContent =
+      "curl -fsSL " + installerBase + "/install.sh | bash";
+    document.getElementById("connect-ps").textContent =
+      "irm " + installerBase + "/install.ps1 | iex";
+
+    function openConnectDialog() { connectDialogEl.style.display = "flex"; }
+    function closeConnectDialog() { connectDialogEl.style.display = "none"; }
+    document.getElementById("connect-btn").onclick = openConnectDialog;
+    document.getElementById("connect-dialog-close").onclick = closeConnectDialog;
+    connectDialogEl.onclick = (e) => { if (e.target === connectDialogEl) closeConnectDialog(); };
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && connectDialogEl.style.display !== "none") closeConnectDialog();
+    });
+
+    for (const btn of document.querySelectorAll(".copy-btn")) {
+      btn.onclick = () => {
+        const text = document.getElementById(btn.dataset.copy).textContent;
+        // navigator.clipboard needs a secure context; this dashboard is plain http over a
+        // tailnet, so fall back to a hidden textarea + execCommand rather than silently failing.
+        const done = () => {
+          btn.textContent = "Copied";
+          btn.classList.add("copied");
+          setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1400);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        } else {
+          fallbackCopy(text, done);
+        }
+      };
+    }
+    function fallbackCopy(text, done) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); } catch (_) { /* leave it selectable */ }
+      document.body.removeChild(ta);
     }
 
     document.getElementById("agent-dialog-cancel").onclick = closeAgentDialog;

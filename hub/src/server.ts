@@ -732,7 +732,11 @@ export function createHubServer(
     // Dashboard & SSE
     if (path === "/" && req.method === "GET") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(getDashboardHTML(adminToken));
+      // Optional override for the Connect modal's install URL. Unset is the normal case:
+      // the dashboard derives the installer's address from the host it was loaded from, which
+      // is correct whenever the two are reached directly. Set this only when the hub is behind
+      // a proxy that does not also front the installer.
+      res.end(getDashboardHTML(adminToken, process.env.WALKIE_TALKIE_INSTALLER_URL ?? ""));
       return;
     }
     if (path === "/events" && req.method === "GET") {
