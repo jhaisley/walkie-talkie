@@ -91,6 +91,36 @@ export function initDB(): void {
     /* column already exists */
   }
 
+  // Delivery log for at-least-once delivery (delivery-ack). One row per (recipient, message)
+  // recorded at route time — the exact routing output, so serving doesn't re-derive routing.
+  // `id` (autoincrement) is the strictly-monotonic per-recipient cursor a client acks against.
+  // Phase 1 only writes + reads this; /poll still uses the in-memory queue (no behavior change).
+  // message_json is a SELF-CONTAINED snapshot of the delivered message. Earlier the row only
+  // referenced messages.id and dbGetDeliveriesAfter JOINed to it — but the messages table
+  // prunes #all (a chat-history cap), so a pruned message orphaned its delivery and a cursor
+  // client silently skipped it (at-least-once broke). Snapshotting the content here decouples
+  // delivery durability from the messages table's lifecycle entirely.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      message_json TEXT
+    )
+  `);
+  // Migration: add message_json to a pre-existing deliveries table. ALTER throws if the column
+  // already exists; swallow that so init stays idempotent.
+  try {
+    db.exec(`ALTER TABLE deliveries ADD COLUMN message_json TEXT`);
+  } catch {
+    /* column already present */
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_deliveries_recipient_id
+    ON deliveries (recipient, id)
+  `);
+
   // Seed #all if it doesn't exist
   const existing = db.prepare("SELECT name FROM channels WHERE name = ?").get("#all");
   if (!existing) {
@@ -142,7 +172,18 @@ export function dbGetUserChannels(userName: string): string[] {
   return rows.map((r) => r.channel);
 }
 
-const ALL_CHANNEL_MAX = 200;
+// #all chat-history retention cap. This ONLY bounds the dashboard's channel-history view now
+// — delivery durability no longer depends on it (deliveries snapshot their own content). The
+// upstream default was 200; raised to 5000 (trivial on disk, ~weeks of fleet history) so
+// scroll-back is generous. Read queries are independently LIMIT-bounded, so this isn't a
+// performance knob. Configurable via WALKIE_TALKIE_ALL_CHANNEL_MAX (read at call time so tests
+// and operators can override). Invalid/absent → default.
+const DEFAULT_ALL_CHANNEL_MAX = 5000;
+function allChannelMax(): number {
+  const raw = process.env.WALKIE_TALKIE_ALL_CHANNEL_MAX;
+  const n = raw === undefined || raw === "" ? NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_ALL_CHANNEL_MAX;
+}
 
 export function dbSaveMessage(msg: Message): void {
   db.prepare(
@@ -173,6 +214,108 @@ function parseMessageRow(row: Record<string, unknown>): Message {
     timestamp: row.timestamp as number,
     image: imageStr ? (JSON.parse(imageStr) as MessageImage) : undefined,
   };
+}
+
+/**
+ * Record that `message` was routed to `recipient` (the delivery-ack log), snapshotting the
+ * full message into the row so the delivery is self-contained — it survives the messages
+ * table being pruned out from under it.
+ */
+/**
+ * Per-recipient retention for the delivery log. The log is otherwise INSERT-only: one row per
+ * (recipient, message), each carrying a full snapshot of the message. On a fleet, a single #all
+ * broadcast writes one row per member and none of them are ever removed, so the table grows
+ * without bound for as long as the hub runs — unlike `messages`, which the #all cap prunes.
+ *
+ * Keeping the newest N per recipient bounds it while leaving at-least-once intact for any client
+ * whose cursor is inside the window. A client further behind than N messages has already lost its
+ * registration to the stale reaper long before, so the guarantee it would be owed is moot.
+ * Configurable via WALKIE_TALKIE_DELIVERY_RETENTION; invalid/absent falls back to the default.
+ */
+const DEFAULT_DELIVERY_RETENTION = 2000;
+function deliveryRetention(): number {
+  const raw = process.env.WALKIE_TALKIE_DELIVERY_RETENTION;
+  const n = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DELIVERY_RETENTION;
+}
+
+/** Trim `recipient`'s delivery log to the newest `deliveryRetention()` rows. */
+function dbPruneDeliveries(recipient: string): void {
+  const max = deliveryRetention();
+  const count = (
+    db.prepare("SELECT COUNT(*) AS cnt FROM deliveries WHERE recipient = ?").get(recipient) as { cnt: number }
+  ).cnt;
+  if (count <= max) return;
+  db.prepare(
+    `DELETE FROM deliveries WHERE recipient = ? AND id NOT IN (
+       SELECT id FROM deliveries WHERE recipient = ? ORDER BY id DESC LIMIT ?
+     )`,
+  ).run(recipient, recipient, max);
+}
+
+export function dbRecordDelivery(recipient: string, message: Message): void {
+  db.prepare("INSERT INTO deliveries (recipient, message_id, created_at, message_json) VALUES (?, ?, ?, ?)").run(
+    recipient,
+    message.id,
+    Date.now(),
+    JSON.stringify(message),
+  );
+  dbPruneDeliveries(recipient);
+}
+
+/**
+ * Messages routed to `recipient` with a delivery id greater than `cursor`, in delivery order.
+ * Returns the new cursor (the highest delivery id served, or the input cursor if none) for the
+ * client to ack against. The basis of at-least-once: a client re-asks with its last cursor and
+ * gets anything it hasn't confirmed.
+ *
+ * Content comes from the self-contained message_json snapshot. Legacy rows (recorded before
+ * the snapshot column) have NULL message_json — for those we LEFT JOIN the messages table as a
+ * best-effort fallback, and skip the row only if the message was already pruned (an
+ * unrecoverable pre-fix orphan). New rows are never orphaned.
+ */
+export function dbGetDeliveriesAfter(
+  recipient: string,
+  cursor: number,
+  limit = 200,
+): { messages: Message[]; cursor: number } {
+  const rows = db
+    .prepare(
+      `SELECT d.id AS delivery_id, d.message_json AS message_json,
+              m.id AS id, m."from" AS "from", m."to" AS "to",
+              m.content AS content, m.channel AS channel, m.timestamp AS timestamp, m.image AS image
+       FROM deliveries d LEFT JOIN messages m ON m.id = d.message_id
+       WHERE d.recipient = ? AND d.id > ?
+       ORDER BY d.id ASC LIMIT ?`,
+    )
+    .all(recipient, cursor, limit) as Record<string, unknown>[];
+
+  const messages: Message[] = [];
+  for (const row of rows) {
+    const snapshot = row.message_json as string | null;
+    if (snapshot) {
+      messages.push(JSON.parse(snapshot) as Message);
+    } else if (row.id != null) {
+      messages.push(parseMessageRow(row)); // legacy row, message still present
+    }
+    // else: legacy row whose message was pruned — unrecoverable orphan, skip.
+  }
+  // Cursor always advances to the last delivery id seen (even past a skipped orphan), so a
+  // dead pre-fix orphan can never re-wedge the stream the way a parse failure once did.
+  const newCursor = rows.length > 0 ? (rows[rows.length - 1].delivery_id as number) : cursor;
+  return { messages, cursor: newCursor };
+}
+
+/**
+ * The current highest delivery id for `recipient` (0 if none). The "now" mark a client with
+ * no persisted cursor (first run, or cursor file wiped) adopts via cursor=init, so it starts
+ * receiving from this point forward instead of replaying the whole delivery history.
+ */
+export function dbGetDeliveryHighWater(recipient: string): number {
+  const row = db.prepare("SELECT MAX(id) AS hw FROM deliveries WHERE recipient = ?").get(recipient) as {
+    hw: number | null;
+  };
+  return row.hw ?? 0;
 }
 
 export function dbGetChannelMessages(channel: string, limit = 50): Message[] {
@@ -293,13 +436,14 @@ export function dbDeleteAgentConfig(id: string): boolean {
 }
 
 function dbPruneAllChannel(): void {
+  const max = allChannelMax();
   const count = (db.prepare("SELECT COUNT(*) as cnt FROM messages WHERE channel = '#all'").get() as { cnt: number })
     .cnt;
-  if (count > ALL_CHANNEL_MAX) {
+  if (count > max) {
     db.prepare(
       `DELETE FROM messages WHERE channel = '#all' AND id NOT IN (
         SELECT id FROM messages WHERE channel = '#all' ORDER BY timestamp DESC LIMIT ?
       )`,
-    ).run(ALL_CHANNEL_MAX);
+    ).run(max);
   }
 }
