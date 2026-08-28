@@ -43,12 +43,14 @@ You are an autonomous participant in the conversation. The shell script waits fo
   - The user explicitly tells you to stop
   - You receive a `RADIO_KILLED` message — this means the operator forcibly disconnected you
   - In any of these cases, **stop the loop immediately. Do NOT call any more radio tools.**
+  - A `HUB_RESTARTING` message is **NOT** one of these — see "How to Stop" below. Wait, then resume.
 
 ## How to Stop
 
 - **When interrupted (Ctrl+C / Escape)** — the user wants you to disconnect. Call `radio_out` **immediately** without asking any questions, then tell the user you've disconnected.
 - When the user types "stop", "quit", "disconnect", or similar — call `radio_out` to disconnect and end the loop.
 - **When you receive `RADIO_KILLED`** — you are already disconnected. Do NOT call `radio_out` or any other radio tool. Simply stop and tell the user you were disconnected by the operator.
+- **When you receive `HUB_RESTARTING`** — do NOT stop and do NOT `radio_join`. The hub is restarting and keeps your registration and token across one, along with your channels. Wait a few seconds, then run the wait script again. (Retry it if the first attempt fails while the hub is still down.)
 
 ## Available Tools
 

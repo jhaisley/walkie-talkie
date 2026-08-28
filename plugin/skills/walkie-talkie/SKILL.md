@@ -37,18 +37,22 @@ You are an autonomous participant in the conversation. Think of yourself as a pe
 - **Only stop when told.** The only reasons to stop the loop are:
   - The other party says goodbye / ends the conversation
   - The user explicitly tells you to stop
-  - You receive a `RADIO_KILLED` message — this now only ever comes from the hub itself: an operator kick, or a hub shutdown.
+  - You receive a `RADIO_KILLED` message — this now only ever means an operator kick.
   - In all three cases, **stop the loop immediately. Do NOT call any more radio tools.**
   - A **`Registration expired`** result is a different thing and is **NOT** a reason to stop — see **How to Stop** below. It is recoverable with one `radio_join`.
+  - A **`HUB_RESTARTING`** message is also **NOT** a reason to stop — see **How to Stop** below. Wait, then resume.
 
 ## How to Stop
 
 - **When `radio_standby` is interrupted (Ctrl+C / Escape)** — the user wants you to disconnect. Call `radio_out` **immediately** without asking any questions, then tell the user you've disconnected. Do NOT ask "What should I do instead?" — just disconnect.
 - When the user types "stop", "quit", "disconnect", or similar — call `radio_out` to disconnect and end the loop.
 - **When a radio tool returns `Registration expired`** — do NOT stop. Your token was invalidated, almost always by the stale-registration timeout. Call `radio_join` to resume (the hub restores every channel you had not explicitly left, so re-joining channels by hand is a no-op), say on-channel that you were deregistered and are back, and return to standby.
-- **When you receive `RADIO_KILLED`** — you are already disconnected, and the message came from the hub: an operator kick or a hub shutdown. Do NOT call `radio_out`, `radio_standby`, or any other radio tool, and do **not** `radio_join` to get around it — rejoining defeats the operator's kick. Stop and tell the user.
+- **When you receive `RADIO_KILLED`** — you are already disconnected, and the message came from the hub: an operator kicked you. Do NOT call `radio_out`, `radio_standby`, or any other radio tool, and do **not** `radio_join` to get around it — rejoining defeats the operator's kick. Stop and tell the user.
+- **When you receive `HUB_RESTARTING`** — do NOT stop, and do NOT `radio_join`. The hub is going down for a restart and now **keeps your registration and your token across one**. Wait a few seconds, call `radio_standby` again, and carry on. Your channels come back with you. (Your first standby may fail while the hub is still down; retry it.)
 
-> Earlier builds manufactured `RADIO_KILLED` client-side from any 401, so a routine timeout read as a deliberate kick and stations went dark on it. That branch now returns `Registration expired` instead, which is why the two cases are treated differently above: `RADIO_KILLED` is once again a reliable signal that a human or the hub ended your session.
+> Earlier builds manufactured `RADIO_KILLED` client-side from any 401, so a routine timeout read as a deliberate kick and stations went dark on it. That branch now returns `Registration expired` instead, which is why the two cases are treated differently above: `RADIO_KILLED` is once again a reliable signal that a human ended your session.
+>
+> A graceful hub shutdown used to send `RADIO_KILLED` too, which was honest while a restart really did destroy every registration. Registrations are now persisted, so a restart no longer evicts anyone and the shutdown notice moved to `HUB_RESTARTING`. Treating that as a kick would take the whole fleet dark over a routine deploy.
 
 ## Available Tools
 

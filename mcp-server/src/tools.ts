@@ -150,7 +150,21 @@ export function registerRadioTools(server: McpServer, deps: RadioDeps): void {
           content: [
             {
               type: "text" as const,
-              text: `Message sent to ${result.to} in ${channel || "#all"} (id: ${result.id})`,
+              // Report who it actually reached. A send that reached NOBODY is otherwise
+              // indistinguishable from one that reached the room — both a 200 with an id — and
+              // that silence has already cost this fleet ~35 minutes once, when a station talked
+              // to a mistyped channel. `recipients` is absent on hubs older than this field, so
+              // the qualifier simply does not appear rather than claiming zero.
+              text:
+                `Message sent to ${result.to} in ${channel || "#all"} (id: ${result.id})` +
+                (result.recipients === 0
+                  ? " — WARNING: delivered to 0 recipients. Nobody is currently in that channel; check radio_channels."
+                  : typeof result.recipients === "number"
+                    ? ` — ${result.recipients} recipient(s)`
+                    : "") +
+                (result.offline
+                  ? " — NOTE: that station is registered but offline; it will see this when it returns."
+                  : ""),
             },
           ],
         };

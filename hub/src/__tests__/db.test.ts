@@ -7,6 +7,7 @@ import {
   dbDeleteChannel,
   dbDeleteChannelMessages,
   dbDeleteReadCursorsForChannel,
+  dbDeleteRegistration,
   dbGetAgentConfig,
   dbGetChannel,
   dbGetChannelMessages,
@@ -16,12 +17,16 @@ import {
   dbGetUserChannels,
   dbListAgentConfigs,
   dbListChannels,
+  dbListRegistrations,
+  dbPruneRegistrations,
   dbRecordDelivery,
   dbRemoveAllMembersOfChannel,
   dbRemoveChannelMember,
   dbSaveMessage,
+  dbTouchRegistrationSeen,
   dbUpdateAgentConfig,
   dbUpdateReadCursor,
+  dbUpsertRegistration,
   initDB,
 } from "../db.js";
 import type { Message } from "../types.js";
@@ -318,5 +323,73 @@ describe("deliveries (at-least-once delivery log)", () => {
     const r = dbGetDeliveriesAfter("bob", 0);
     expect(r.messages.map((m) => m.content)).toEqual(["durable"]);
     expect(r.cursor).toBeGreaterThan(0);
+  });
+});
+
+describe("registrations", () => {
+  it("round-trips an upsert, a list and a delete", () => {
+    dbUpsertRegistration("alice", "tok-a", "agent", 1000);
+    dbUpsertRegistration("bridge-1", "tok-b", "bridge", 2000);
+
+    const rows = dbListRegistrations();
+    expect(rows.map((r) => r.name)).toEqual(["alice", "bridge-1"]);
+    const alice = rows.find((r) => r.name === "alice")!;
+    expect(alice.token).toBe("tok-a");
+    expect(alice.role).toBe("agent");
+    expect(alice.registered_at).toBe(1000);
+    expect(alice.last_seen_at).toBeNull();
+
+    dbDeleteRegistration("alice");
+    expect(dbListRegistrations().map((r) => r.name)).toEqual(["bridge-1"]);
+  });
+
+  it("replaces the token on a second upsert and leaves exactly one row", () => {
+    dbUpsertRegistration("alice", "tok-old", "agent", 1000);
+    dbTouchRegistrationSeen("alice", 1500);
+    dbUpsertRegistration("alice", "tok-new", "bridge", 3000);
+
+    const rows = dbListRegistrations().filter((r) => r.name === "alice");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].token).toBe("tok-new");
+    expect(rows[0].role).toBe("bridge");
+    expect(rows[0].registered_at).toBe(3000);
+    // A re-register mints a token that has not been used yet, so the seen stamp resets --
+    // carrying the old one forward would start the new registration's TTL window in the past.
+    expect(rows[0].last_seen_at).toBeNull();
+  });
+
+  it("stamps last_seen_at", () => {
+    dbUpsertRegistration("alice", "tok-a", "agent", 1000);
+    dbTouchRegistrationSeen("alice", 4242);
+    expect(dbListRegistrations()[0].last_seen_at).toBe(4242);
+  });
+
+  it("prunes by COALESCE(last_seen_at, registered_at) and returns the pruned names", () => {
+    const now = Date.now();
+    // Never seen but registered recently: must survive. A null last_seen_at means "just joined",
+    // not "ancient" -- getting that backwards would evict every station at its first restart.
+    dbUpsertRegistration("fresh-unseen", "tok-1", "agent", now - 1000);
+    // Registered long ago but seen recently: must survive.
+    dbUpsertRegistration("old-but-active", "tok-2", "agent", now - 900_000);
+    dbTouchRegistrationSeen("old-but-active", now - 500);
+    // Seen long ago: must go.
+    dbUpsertRegistration("ghost", "tok-3", "agent", now - 900_000);
+    dbTouchRegistrationSeen("ghost", now - 800_000);
+    // Never seen and registered long ago: must go.
+    dbUpsertRegistration("never-came-back", "tok-4", "agent", now - 900_000);
+
+    const pruned = dbPruneRegistrations(now - 600_000);
+    expect(pruned.sort()).toEqual(["ghost", "never-came-back"]);
+    expect(
+      dbListRegistrations()
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["fresh-unseen", "old-but-active"]);
+  });
+
+  it("returns an empty array when nothing is old enough to prune", () => {
+    dbUpsertRegistration("alice", "tok-a", "agent", Date.now());
+    expect(dbPruneRegistrations(Date.now() - 60_000)).toEqual([]);
+    expect(dbListRegistrations()).toHaveLength(1);
   });
 });
