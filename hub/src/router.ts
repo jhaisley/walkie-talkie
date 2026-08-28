@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getUserRole, getUsersByRole, isUserRegistered } from "./auth.js";
-import { getChannelMembers, isChannelMember } from "./channels.js";
+import { channelExists, getChannelMembers, isChannelMember, normalizeChannel } from "./channels.js";
 import { dbRecordDelivery, dbSaveMessage } from "./db.js";
 import { deliverMessage } from "./polling.js";
 import type { Message, MessageImage } from "./types.js";
@@ -32,7 +32,18 @@ export function routeMessage(
   channel = "#all",
   image?: MessageImage,
 ): Message {
-  const members = getChannelMembers(channel);
+  // Refuse an unknown channel outright. Previously only the DM path checked anything — it threw
+  // "not a member of X" — while @all resolved an unknown channel to an empty member list,
+  // delivered to nobody, and returned 200 with a message id. The erroring path was the only one
+  // telling the truth, which made the silent path look like the working one. Nine messages
+  // reached zero recipients on this deployment before it was noticed.
+  if (!channelExists(channel)) {
+    throw new Error(
+      `Channel "${channel}" does not exist. Check the name with radio_channels, or create it with radio_channel_create.`,
+    );
+  }
+  const normalized = normalizeChannel(channel);
+  const members = getChannelMembers(normalized);
 
   if (to === "@all") {
     const message: Message = {
@@ -40,7 +51,7 @@ export function routeMessage(
       from,
       to: "@all",
       content,
-      channel,
+      channel: normalized,
       timestamp: Date.now(),
       image,
     };
@@ -65,7 +76,7 @@ export function routeMessage(
     throw new Error(`User "${targetName}" is not connected`);
   }
 
-  if (!isChannelMember(channel, targetName)) {
+  if (!isChannelMember(normalized, targetName)) {
     throw new Error(`User "${targetName}" is not a member of ${channel}`);
   }
 
@@ -74,7 +85,7 @@ export function routeMessage(
     from,
     to: targetName,
     content,
-    channel,
+    channel: normalized,
     timestamp: Date.now(),
     image,
   };
