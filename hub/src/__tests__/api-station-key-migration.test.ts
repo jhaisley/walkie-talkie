@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { enrollStation, registerWith, startTestServer, stopTestServer, type TestContext } from "./helpers/server-harness.js";
+import {
+  enrollStation,
+  registerWith,
+  startTestServer,
+  stopTestServer,
+  type TestContext,
+} from "./helpers/server-harness.js";
 
 let ctx: TestContext;
 
