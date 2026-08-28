@@ -21,12 +21,14 @@ describe("resolveWaitScript", () => {
 
   it("never returns a path the predicate rejects when a candidate exists", () => {
     const result = resolveWaitScript("/repo/mcp-server/dist", existsOnlyPluginBin);
-    expect(existsOnlyPluginBin(result)).toBe(true);
+    expect(result).not.toBeNull();
+    expect(existsOnlyPluginBin(result as string)).toBe(true);
   });
 
-  it("falls back to the first candidate when no candidate exists on disk", () => {
-    const result = resolveWaitScript("/repo/mcp-server/dist", () => false);
-    expect(result).toBe("/repo/mcp-server/bin/radio-wait.sh");
+  it("reports absence rather than guessing when no candidate exists on disk", () => {
+    // Was: fell back to candidate[0]. That handed every installed station a confident absolute
+    // path to a file no installer ships, which reads as "installed here" to anything consuming it.
+    expect(resolveWaitScript("/repo/mcp-server/dist", () => false)).toBeNull();
   });
 });
 
