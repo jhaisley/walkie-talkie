@@ -54,7 +54,7 @@ import {
   revokeStationKey,
 } from "./keys.js";
 import { launchAgent } from "./launcher.js";
-import { createMcpEndpoint } from "./mcp.js";
+import { closeMcpSessionFor, createMcpEndpoint } from "./mcp.js";
 import {
   addPoll,
   getLastSeen,
@@ -460,6 +460,11 @@ function kickUser(name: string): boolean {
   });
   removePoll(name);
   removeQueue(name);
+  // A hub-hosted station's callsign is also held by the MCP layer's session index, and the
+  // radio_join guard refuses a name a live session still holds. Kicking only the registration
+  // left the name hostage to a zombie session for the full idle-sweep window (30 min default);
+  // close the session in the same breath so a kick means the same thing on both transports.
+  closeMcpSessionFor(name);
   unregisterUser(name);
   broadcast({ type: "leave", name, timestamp: Date.now() });
   if (role === "agent") {
