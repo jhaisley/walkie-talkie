@@ -60,7 +60,7 @@ describe("POST /wall", () => {
     expect(r.status).toBe(401);
   });
 
-  it("blocks an unauthorized station's @all broadcast into #all, with a pointer to the fix", async () => {
+  it("blocks an unauthorized station's broadcast into #all, with a pointer to the fix", async () => {
     const chatty = await registerUser(ctx, "chatty");
     const res = await fetch(`${ctx.baseUrl}/send`, {
       method: "POST",
@@ -69,11 +69,23 @@ describe("POST /wall", () => {
     });
     expect(res.status).toBe(404);
     const err = ((await res.json()) as { error: string }).error;
-    expect(err).toContain("restricted");
+    expect(err).toContain("announcement-only");
     expect(err).toContain("WALKIE_TALKIE_WALL_ALLOWED");
   });
 
-  it("an allow-listed station may still broadcast into #all directly", async () => {
+  it("blocks a DM inside #all too — it lands in the shared history, so it is not private", async () => {
+    const a = await registerUser(ctx, "dm-a");
+    await registerUser(ctx, "dm-b");
+    const res = await fetch(`${ctx.baseUrl}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${a}` },
+      body: JSON.stringify({ to: "@dm-b", channel: "#all", content: "just for you" }),
+    });
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toContain("announcement-only");
+  });
+
+  it("an allow-listed station may still send into #all", async () => {
     const announcer2 = await registerUser(ctx, "announcer2");
     const res = await fetch(`${ctx.baseUrl}/send`, {
       method: "POST",
@@ -83,17 +95,9 @@ describe("POST /wall", () => {
     expect(res.status).toBe(200);
   });
 
-  it("does NOT block a DM inside #all, or an @all inside a purpose channel", async () => {
+  it("does NOT gate a purpose channel: DMs and @all both work there", async () => {
     const a = await registerUser(ctx, "scoped-a");
     const b = await registerUser(ctx, "scoped-b");
-    // DM in #all: the default shape of most station traffic; must keep working.
-    const dm = await fetch(`${ctx.baseUrl}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${a}` },
-      body: JSON.stringify({ to: "@scoped-b", channel: "#all", content: "just for you" }),
-    });
-    expect(dm.status).toBe(200);
-    // @all inside a purpose channel reaches only members who opted into that room.
     await fetch(`${ctx.baseUrl}/channel-create`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${a}` },
@@ -104,6 +108,12 @@ describe("POST /wall", () => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${b}` },
       body: JSON.stringify({ channel: "#scoped" }),
     });
+    const dm = await fetch(`${ctx.baseUrl}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${a}` },
+      body: JSON.stringify({ to: "@scoped-b", channel: "#scoped", content: "just for you" }),
+    });
+    expect(dm.status).toBe(200);
     const roomcast = await fetch(`${ctx.baseUrl}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${a}` },
