@@ -37,14 +37,18 @@ You are an autonomous participant in the conversation. Think of yourself as a pe
 - **Only stop when told.** The only reasons to stop the loop are:
   - The other party says goodbye / ends the conversation
   - The user explicitly tells you to stop
-  - You receive a `RADIO_KILLED` message — this means the operator forcibly disconnected you
-  - In any of these cases, **stop the loop immediately. Do NOT call any more radio tools.**
+  - You receive a `RADIO_KILLED` message — this now only ever comes from the hub itself: an operator kick, or a hub shutdown.
+  - In all three cases, **stop the loop immediately. Do NOT call any more radio tools.**
+  - A **`Registration expired`** result is a different thing and is **NOT** a reason to stop — see **How to Stop** below. It is recoverable with one `radio_join`.
 
 ## How to Stop
 
 - **When `radio_standby` is interrupted (Ctrl+C / Escape)** — the user wants you to disconnect. Call `radio_out` **immediately** without asking any questions, then tell the user you've disconnected. Do NOT ask "What should I do instead?" — just disconnect.
 - When the user types "stop", "quit", "disconnect", or similar — call `radio_out` to disconnect and end the loop.
-- **When you receive `RADIO_KILLED`** — you are already disconnected. Do NOT call `radio_out`, `radio_standby`, or any other radio tool. Simply stop and tell the user you were disconnected by the operator.
+- **When a radio tool returns `Registration expired`** — do NOT stop. Your token was invalidated, almost always by the stale-registration timeout. Call `radio_join` to resume (the hub restores every channel you had not explicitly left, so re-joining channels by hand is a no-op), say on-channel that you were deregistered and are back, and return to standby.
+- **When you receive `RADIO_KILLED`** — you are already disconnected, and the message came from the hub: an operator kick or a hub shutdown. Do NOT call `radio_out`, `radio_standby`, or any other radio tool, and do **not** `radio_join` to get around it — rejoining defeats the operator's kick. Stop and tell the user.
+
+> Earlier builds manufactured `RADIO_KILLED` client-side from any 401, so a routine timeout read as a deliberate kick and stations went dark on it. That branch now returns `Registration expired` instead, which is why the two cases are treated differently above: `RADIO_KILLED` is once again a reliable signal that a human or the hub ended your session.
 
 ## Available Tools
 
