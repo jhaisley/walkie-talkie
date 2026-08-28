@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import { resetAuthState } from "../../auth.js";
 import { initGeneralChannel, resetChannelState } from "../../channels.js";
 import { initDB } from "../../db.js";
-import { createHubServer } from "../../server.js";
+import { createHubServer, resetEnrollFailureState } from "../../server.js";
 
 export interface TestContext {
   baseUrl: string;
@@ -11,13 +11,30 @@ export interface TestContext {
   server: Server;
 }
 
+export interface TestServerOptions {
+  /**
+   * Value for WALKIE_TALKIE_STALE_GRACE_MS, applied before createHubServer reads it.
+   * `0` disables the stale reaper — set it when a test must prove that something OTHER than the
+   * reaper ended a session, since a passing assertion is meaningless if the reaper could have
+   * done the work.
+   */
+  staleGraceMs?: number;
+}
+
 const ADMIN_TOKEN = "test-admin-token";
 const JOIN_TOKEN = "test-join-token";
 
-export async function startTestServer(): Promise<TestContext> {
+export async function startTestServer(options: TestServerOptions = {}): Promise<TestContext> {
   // Reset in-memory state
   resetAuthState();
   resetChannelState();
+  resetEnrollFailureState();
+
+  if (options.staleGraceMs !== undefined) {
+    process.env.WALKIE_TALKIE_STALE_GRACE_MS = String(options.staleGraceMs);
+  } else {
+    delete process.env.WALKIE_TALKIE_STALE_GRACE_MS;
+  }
 
   // Init in-memory DB
   process.env.WALKIE_TALKIE_DB_PATH = ":memory:";
@@ -59,4 +76,37 @@ export async function registerUser(ctx: TestContext, name: string): Promise<stri
   });
   const body = (await res.json()) as { token: string };
   return body.token;
+}
+
+/** POST /register with an arbitrary bearer credential — a station key, the join token, anything. */
+export function registerWith(ctx: TestContext, credential: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`${ctx.baseUrl}/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${credential}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Mint an enrollment code as the operator and redeem it, returning the plaintext station key. */
+export async function enrollStation(
+  ctx: TestContext,
+  callsign: string,
+  role: "agent" | "bridge" = "agent",
+): Promise<string> {
+  const mint = await fetch(`${ctx.baseUrl}/admin-station-key-create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ctx.adminToken}` },
+    body: JSON.stringify({ callsign, role }),
+  });
+  const { code } = (await mint.json()) as { code: string };
+  const enroll = await fetch(`${ctx.baseUrl}/enroll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  const { key } = (await enroll.json()) as { key: string };
+  return key;
 }

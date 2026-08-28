@@ -1,7 +1,7 @@
 import path from "node:path";
 import Database from "better-sqlite3";
 
-import type { Message, MessageImage } from "./types.js";
+import type { Message, MessageImage, StationEnrollmentRow, StationKeyRow } from "./types.js";
 
 export interface AgentConfigRow {
   id: string;
@@ -119,6 +119,47 @@ export function initDB(): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_deliveries_recipient_id
     ON deliveries (recipient, id)
+  `);
+
+  // Per-station credentials. Replaces "any holder of the ONE shared join token may claim ANY
+  // free callsign" with "this key may claim exactly this callsign". Only the sha256 of the
+  // secret half is stored, so a database read (or a backup, or a dump in a bug report) yields
+  // nothing that can register.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS station_keys (
+      id           TEXT PRIMARY KEY,
+      callsign     TEXT NOT NULL,
+      secret_hash  TEXT NOT NULL,
+      role         TEXT NOT NULL DEFAULT 'agent',
+      label        TEXT,
+      created_at   INTEGER NOT NULL,
+      created_by   TEXT NOT NULL,
+      last_used_at INTEGER,
+      revoked_at   INTEGER
+    )
+  `);
+  // One ACTIVE key per callsign, enforced by the schema rather than by convention. This is what
+  // makes minting a rotation: dbCreateStationKey revokes the predecessor in the same
+  // transaction, so an install command sitting in someone's scrollback is dead rather than a
+  // second, equally valid identity for the same station.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_station_keys_active_callsign
+    ON station_keys (callsign) WHERE revoked_at IS NULL
+  `);
+
+  // One-time enrollment codes. Keyed by sha256(code) — the code is never stored, so this table
+  // cannot be read to enrol anything; it can only be used to VERIFY a code someone presents.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS station_enrollments (
+      code_hash   TEXT PRIMARY KEY,
+      callsign    TEXT NOT NULL,
+      role        TEXT NOT NULL DEFAULT 'agent',
+      label       TEXT,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      redeemed_at INTEGER,
+      key_id      TEXT
+    )
   `);
 
   // Seed #all if it doesn't exist
@@ -446,4 +487,151 @@ function dbPruneAllChannel(): void {
       )`,
     ).run(max);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Station keys and enrollment codes
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Insert a station key, revoking whatever active key the callsign already had — both in ONE
+ * transaction, because the partial unique index on (callsign) WHERE revoked_at IS NULL would
+ * otherwise reject the insert. Rotation is therefore the default and the only outcome: there
+ * is never a moment where a callsign has two live credentials.
+ *
+ * Returns the id of the key this one displaced, if any, so the caller can terminate that
+ * key's live session (a revoked key still holds a session token the hub minted at /register).
+ */
+export function dbCreateStationKey(row: StationKeyRow): { revokedPredecessorId: string | null } {
+  const insert = db.transaction((r: StationKeyRow) => {
+    const prior = db.prepare("SELECT id FROM station_keys WHERE callsign = ? AND revoked_at IS NULL").get(r.callsign) as
+      | { id: string }
+      | undefined;
+    if (prior) {
+      db.prepare("UPDATE station_keys SET revoked_at = ? WHERE id = ?").run(r.created_at, prior.id);
+    }
+    db.prepare(
+      `INSERT INTO station_keys (id, callsign, secret_hash, role, label, created_at, created_by, last_used_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+    ).run(r.id, r.callsign, r.secret_hash, r.role, r.label, r.created_at, r.created_by);
+    return prior?.id ?? null;
+  });
+  return { revokedPredecessorId: insert(row) as string | null };
+}
+
+export function dbGetStationKeyById(id: string): StationKeyRow | undefined {
+  return db.prepare("SELECT * FROM station_keys WHERE id = ?").get(id) as StationKeyRow | undefined;
+}
+
+export function dbGetActiveStationKeyByCallsign(callsign: string): StationKeyRow | undefined {
+  return db.prepare("SELECT * FROM station_keys WHERE callsign = ? AND revoked_at IS NULL").get(callsign) as
+    | StationKeyRow
+    | undefined;
+}
+
+export function dbListStationKeys(): StationKeyRow[] {
+  return db.prepare("SELECT * FROM station_keys ORDER BY created_at DESC").all() as StationKeyRow[];
+}
+
+/** Revoke a key. Returns the row as it was BEFORE revocation, or null if it was already dead. */
+export function dbRevokeStationKey(id: string, at: number = Date.now()): StationKeyRow | null {
+  const row = dbGetStationKeyById(id);
+  if (!row || row.revoked_at !== null) return null;
+  db.prepare("UPDATE station_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(at, id);
+  return row;
+}
+
+/**
+ * Stamp a key as used. Deliberately NOT called from an authenticated-request hook: /poll holds
+ * one open request per station continuously, so a write there would put a SQLite transaction on
+ * every poll wake across the fleet. Only /register calls this — once per station lifetime.
+ */
+export function dbTouchStationKey(id: string, at: number = Date.now()): void {
+  db.prepare("UPDATE station_keys SET last_used_at = ? WHERE id = ?").run(at, id);
+}
+
+/**
+ * How long an expired, never-redeemed enrollment row is kept before being swept. Codes are minted
+ * by hand so the table grows slowly, but nothing else ever deletes from it — an INSERT-only table
+ * on a long-running hub is unbounded, however slow. Redeemed rows are NOT swept: they are the
+ * audit trail tying a key back to the enrollment that issued it, and they are bounded by the
+ * number of keys.
+ */
+const ENROLLMENT_SWEEP_AFTER_MS = 24 * 60 * 60_000;
+
+export function dbCreateEnrollment(row: StationEnrollmentRow): void {
+  db.prepare("DELETE FROM station_enrollments WHERE redeemed_at IS NULL AND expires_at < ?").run(
+    row.created_at - ENROLLMENT_SWEEP_AFTER_MS,
+  );
+  db.prepare(
+    `INSERT INTO station_enrollments (code_hash, callsign, role, label, created_at, expires_at, redeemed_at, key_id)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`,
+  ).run(row.code_hash, row.callsign, row.role, row.label, row.created_at, row.expires_at);
+}
+
+export function dbGetEnrollment(codeHash: string): StationEnrollmentRow | undefined {
+  return db.prepare("SELECT * FROM station_enrollments WHERE code_hash = ?").get(codeHash) as
+    | StationEnrollmentRow
+    | undefined;
+}
+
+/**
+ * Redeem a code and mint its key, atomically.
+ *
+ * The claim is a SINGLE conditional UPDATE — never read-then-write — so two racing redemptions
+ * of one code cannot both see it unredeemed and both mint. Only the writer that observes
+ * `changes === 1` proceeds; the loser gets null and nothing is inserted, because the whole
+ * thing (claim + predecessor revocation + insert) runs in one transaction.
+ *
+ * The caller generates the key id and secret BEFORE calling, which is what lets the enrollment
+ * row record `key_id` in the same statement that claims it. Returns the minted row plus the id
+ * of any key it displaced, or null if the code was missing, already redeemed, or expired.
+ */
+export function dbRedeemEnrollment(
+  codeHash: string,
+  keyId: string,
+  secretHash: string,
+  createdBy: string,
+  now: number = Date.now(),
+): { key: StationKeyRow; revokedPredecessorId: string | null } | null {
+  const redeem = db.transaction(() => {
+    const claimed = db
+      .prepare(
+        `UPDATE station_enrollments SET redeemed_at = ?, key_id = ?
+         WHERE code_hash = ? AND redeemed_at IS NULL AND expires_at > ?`,
+      )
+      .run(now, keyId, codeHash, now);
+    if (claimed.changes !== 1) return null;
+
+    const enrollment = db.prepare("SELECT * FROM station_enrollments WHERE code_hash = ?").get(codeHash) as
+      | StationEnrollmentRow
+      | undefined;
+    if (!enrollment) return null;
+
+    const prior = db
+      .prepare("SELECT id FROM station_keys WHERE callsign = ? AND revoked_at IS NULL")
+      .get(enrollment.callsign) as { id: string } | undefined;
+    if (prior) {
+      db.prepare("UPDATE station_keys SET revoked_at = ? WHERE id = ?").run(now, prior.id);
+    }
+
+    const key: StationKeyRow = {
+      id: keyId,
+      callsign: enrollment.callsign,
+      secret_hash: secretHash,
+      role: enrollment.role,
+      label: enrollment.label,
+      created_at: now,
+      created_by: createdBy,
+      last_used_at: null,
+      revoked_at: null,
+    };
+    db.prepare(
+      `INSERT INTO station_keys (id, callsign, secret_hash, role, label, created_at, created_by, last_used_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+    ).run(key.id, key.callsign, key.secret_hash, key.role, key.label, key.created_at, key.created_by);
+
+    return { key, revokedPredecessorId: prior?.id ?? null };
+  });
+  return redeem() as { key: StationKeyRow; revokedPredecessorId: string | null } | null;
 }

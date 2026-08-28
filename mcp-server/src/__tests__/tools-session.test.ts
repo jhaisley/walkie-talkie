@@ -71,6 +71,7 @@ function makeFake(overrides: Partial<RadioDeps> = {}, hubUrl = "http://hub.test:
   const deps: RadioDeps = {
     client,
     joinToken: "join-token",
+    credentialKind: "join-token",
     session: { token: null, name: null },
     clientBuildLabel: "1.7.0+abc123",
     clampStandbyMs: (ms) => ms ?? 30_000,

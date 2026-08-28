@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   authenticateRequest,
+  findUserByKeyId,
   getRegisteredUsers,
+  getUser,
   getUserRole,
-  getUserToken,
   isUserRegistered,
   registerUser,
   unregisterUser,
@@ -35,10 +36,19 @@ import {
   dbGetUserChannels,
   dbListAgentConfigs,
   dbListChannels,
+  dbListStationKeys,
+  dbTouchStationKey,
   dbUpdateAgentConfig,
   dbUpdateReadCursor,
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
+import {
+  createEnrollment,
+  DEFAULT_ENROLLMENT_TTL_MS,
+  redeemEnrollment,
+  resolveStationKey,
+  revokeStationKey,
+} from "./keys.js";
 import { launchAgent } from "./launcher.js";
 import {
   addPoll,
@@ -53,7 +63,7 @@ import {
   setOnline,
 } from "./polling.js";
 import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
-import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
+import type { RegisterRequest, RouteHandler, SendRequest, UserRole } from "./types.js";
 import { getBuildInfo } from "./version.js";
 
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
@@ -86,81 +96,146 @@ function sendError(res: ServerResponse, status: number, message: string): void {
   sendJson(res, status, { error: message });
 }
 
+/**
+ * The Phase-4 switch. When set, /register stops accepting the shared join token and only a
+ * per-station key will do.
+ *
+ * Off by default and read at call time, so flipping the fleet over is an env change in
+ * docker-compose.yml and the revert is the same change backwards — no rebuild, no reinstall,
+ * and no window in which a station cannot get back on. Do not flip it until
+ * GET /admin-station-keys shows a last_used_at for every callsign, the slack bridge included.
+ */
+export function resolveRequireStationKey(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.WALKIE_TALKIE_REQUIRE_STATION_KEY;
+  if (raw === undefined || raw === "") return false;
+  const v = raw.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 const handleRegister: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as RegisterRequest;
-  if (!body.name || typeof body.name !== "string") {
-    return sendError(res, 400, "Missing or invalid 'name' field");
+
+  // A station key binds a credential to ONE callsign, so identity stops being a self-declaration.
+  // Dispatch has already accepted this request on either the join token or a key; resolving it
+  // again here (one indexed read, once per station lifetime) is what lets handleRegister know
+  // which it was without widening RouteHandler for the benefit of a single route.
+  const key = resolveStationKey(req);
+
+  let name: string;
+  let role: UserRole;
+
+  if (key) {
+    // The body's name is advisory and checked, never applied. Overriding it silently would leave
+    // a station whose own transcript says "bravo" registered as "alpha" — a mislabelled station
+    // is a worse failure than an error the operator can read.
+    // An absent, empty, or whitespace-only name is an ABSENCE, not a disagreement — answering
+    // `not ""` would be a baffling 403 for a client that simply did not send one.
+    const claimed = typeof body.name === "string" ? body.name.trim() : "";
+    if (claimed !== "" && claimed !== key.callsign) {
+      return sendError(res, 403, `Key is bound to callsign "${key.callsign}", not "${claimed}"`);
+    }
+    name = key.callsign;
+    // Role comes from the key row, not the body. Until now `role` was caller-chosen, and
+    // router.ts notifyBridges() fans every join/leave event to everyone holding "bridge" — so a
+    // shared-token holder could self-declare as a bridge and subscribe to the fleet's membership
+    // feed. Deriving it from the key closes that. NOTE: the slack bridge's key must therefore be
+    // minted with role "bridge", or it silently demotes to agent and stops seeing USER_JOINED.
+    role = key.role === "bridge" ? "bridge" : "agent";
+  } else {
+    if (resolveRequireStationKey()) {
+      return sendError(
+        res,
+        403,
+        "This hub requires a per-station key. Ask the operator for an enrollment code and re-run the installer with it.",
+      );
+    }
+    if (!body.name || typeof body.name !== "string") {
+      return sendError(res, 400, "Missing or invalid 'name' field");
+    }
+    // "operator" is the dashboard's identity, and it is created lazily by handleAdminSend on the
+    // first admin message rather than seeded at boot. Registrations live only in memory, so every
+    // hub restart leaves the name unclaimed until someone sends from the dashboard — and in that
+    // window any holder of the join token could take it via /register.
+    //
+    // That matters more than an ordinary name collision: the dashboard renders anything `from`
+    // "operator" with operator styling, agents are instructed to execute operator messages as
+    // tasks, and /kick-all deliberately skips the name, so a squatter is immune to the bulk
+    // remedy. Reserving it closes the window without needing per-identity auth, which the join
+    // token does not provide. Nothing legitimate registers it this way: the dashboard never calls
+    // /register, and handleAdminSend calls registerUser() directly.
+    if (isReservedName(body.name)) {
+      return sendError(res, 403, `"${body.name}" is a reserved name and cannot be registered`);
+    }
+    name = body.name;
+    role = body.role === "bridge" ? "bridge" : "agent";
   }
-  // "operator" is the dashboard's identity, and it is created lazily by handleAdminSend on the
-  // first admin message rather than seeded at boot. Registrations live only in memory, so every
-  // hub restart leaves the name unclaimed until someone sends from the dashboard — and in that
-  // window any holder of the join token could take it via /register.
-  //
-  // That matters more than an ordinary name collision: the dashboard renders anything `from`
-  // "operator" with operator styling, agents are instructed to execute operator messages as
-  // tasks, and /kick-all deliberately skips the name, so a squatter is immune to the bulk
-  // remedy. Reserving it closes the window without needing per-identity auth, which the join
-  // token does not provide. Nothing legitimate registers it this way: the dashboard never calls
-  // /register, and handleAdminSend calls registerUser() directly.
-  if (isReservedName(body.name)) {
-    return sendError(res, 403, `"${body.name}" is a reserved name and cannot be registered`);
-  }
+
   try {
     // Whether this call took over a registration that was still held. Reported back so the
     // client does not have to infer it: comparing the old and new tokens looks equivalent but
     // is not, because a fresh register also mints a new token — a station whose name had
     // already been reaped would then be told it reclaimed something when it started clean.
-    const reclaimed = isUserRegistered(body.name);
-    // Allow reconnection only if the caller proves ownership with the old token
-    if (isUserRegistered(body.name)) {
-      const existingToken = getUserToken(body.name);
-      if (!body.oldToken || body.oldToken !== existingToken) {
-        return sendError(res, 409, `User "${body.name}" is already registered`);
+    const reclaimed = isUserRegistered(name);
+    if (reclaimed) {
+      const incumbent = getUser(name);
+      // Two independent proofs of ownership. The key is the strong one: it survives the client
+      // restarting, the hub restarting, and the station losing its token file, so a key holder
+      // never has to be reaped out of its own callsign before it can have it back. oldToken is
+      // the legacy proof and stays for every station still on the shared join token — removing
+      // it would strand the live fleet.
+      const provenByKey = key !== null && incumbent?.keyId !== undefined && incumbent.keyId === key.id;
+      const provenByToken = Boolean(body.oldToken) && body.oldToken === incumbent?.token;
+      if (!provenByKey && !provenByToken) {
+        return sendError(res, 409, `User "${name}" is already registered`);
       }
-      removePoll(body.name);
-      removeQueue(body.name);
-      unregisterUser(body.name);
+      removePoll(name);
+      removeQueue(name);
+      unregisterUser(name);
     }
     // Cancel grace timer if reconnecting
-    const graceTimer = staleTimers.get(body.name);
+    const graceTimer = staleTimers.get(name);
     if (graceTimer) {
       clearTimeout(graceTimer);
-      staleTimers.delete(body.name);
+      staleTimers.delete(name);
     }
-    const role = body.role === "bridge" ? "bridge" : "agent";
-    const user = registerUser(body.name, role);
-    ensureQueue(body.name);
-    setOnline(body.name);
+    const user = registerUser(name, role, key?.id);
+    // Stamped here and ONLY here. /poll holds one open request per station continuously, so
+    // stamping on every authenticated request would put a SQLite transaction on every poll wake
+    // across the fleet; /register happens once per station lifetime. This is also the field the
+    // operator reads to decide whether the fleet has finished migrating.
+    if (key) dbTouchStationKey(key.id);
+    ensureQueue(name);
+    setOnline(name);
     // Auto-join #all
     try {
-      joinChannel("#all", body.name);
+      joinChannel("#all", name);
     } catch {
       /* already joined or channel issue */
     }
     // Restore previous channel memberships from DB
-    const previousChannels = dbGetUserChannels(body.name);
+    const previousChannels = dbGetUserChannels(name);
     for (const ch of previousChannels) {
       if (ch === "#all") continue;
       try {
-        joinChannel(ch, body.name);
-        broadcast({ type: "channel_join", channel: ch, userName: body.name, timestamp: Date.now() });
-        console.log(`[auto-rejoin] ${body.name} -> ${ch}`);
+        joinChannel(ch, name);
+        broadcast({ type: "channel_join", channel: ch, userName: name, timestamp: Date.now() });
+        console.log(`[auto-rejoin] ${name} -> ${ch}`);
       } catch {
         /* channel may no longer exist */
       }
     }
-    broadcast({ type: "join", name: body.name, timestamp: Date.now() });
-    console.log(`[register] ${body.name}`);
+    broadcast({ type: "join", name, timestamp: Date.now() });
+    console.log(`[register] ${name}${key ? ` (key ${key.id})` : ""}`);
 
     if (role === "agent") {
-      notifyBridges(`USER_JOINED: ${body.name}`);
+      notifyBridges(`USER_JOINED: ${name}`);
     } else if (role === "bridge") {
       // Send current agent list to the newly connected bridge (even if empty)
-      const agents = getRegisteredUsers().filter((n) => n !== body.name && getUserRole(n) === "agent");
-      enqueueAndDeliver(body.name, {
+      const agents = getRegisteredUsers().filter((n) => n !== name && getUserRole(n) === "agent");
+      enqueueAndDeliver(name, {
         id: randomUUID(),
         from: "system",
-        to: body.name,
+        to: name,
         content: agents.length > 0 ? `CONNECTED_USERS: ${agents.join(", ")}` : "CONNECTED_USERS: (none)",
         channel: "#all",
         timestamp: Date.now(),
@@ -667,6 +742,177 @@ const handleAdminAgentStart: RouteHandler = async (req, res) => {
   }
 };
 
+/**
+ * Issuance moved to the hub because the installer cannot do it: installer/render.sh is a sed
+ * substitution over a static template served by an nginx with `autoindex on` and no auth, so it
+ * has no database, cannot mint anything, and hands its baked-in secret to anyone who can reach
+ * the port. The hub already has admin auth and the DB.
+ *
+ * What the operator gets back is a CODE, not a key. The key itself is minted at redemption and
+ * shown once to the machine that redeemed it, so the secret never touches the operator's browser
+ * and is never stored anywhere in recoverable form.
+ */
+const handleAdminStationKeyCreate: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as {
+    callsign?: string;
+    role?: string;
+    label?: string;
+    ttlMinutes?: number;
+  };
+  const callsign = (body.callsign ?? "").trim();
+  if (!callsign) {
+    return sendError(res, 400, "Missing 'callsign' field");
+  }
+  if (!AGENT_NAME_RE.test(callsign)) {
+    return sendError(res, 400, "Callsign must contain only letters, numbers, hyphens and underscores");
+  }
+  // Reserved names are refused here too, not just on the join-token path. A key bound to
+  // "operator" would otherwise walk straight past isReservedName, since the key branch of
+  // handleRegister never consults it — the reservation would have been a patch with a hole.
+  if (isReservedName(callsign)) {
+    return sendError(res, 403, `"${callsign}" is a reserved name and cannot be issued a key`);
+  }
+  const role: UserRole = body.role === "bridge" ? "bridge" : "agent";
+  // Converted to ms BEFORE flooring, so a sub-minute ttl is honoured rather than silently
+  // rounding to zero (and to nothing, since a zero ttl would then fall back to the default).
+  const requestedTtlMs =
+    typeof body.ttlMinutes === "number" && Number.isFinite(body.ttlMinutes) ? Math.floor(body.ttlMinutes * 60_000) : 0;
+  const ttlMs = requestedTtlMs > 0 ? requestedTtlMs : DEFAULT_ENROLLMENT_TTL_MS;
+  const label = typeof body.label === "string" && body.label.trim() ? body.label.trim() : null;
+
+  const enrollment = createEnrollment(callsign, role, label, ttlMs);
+  console.log(`[station-key] enrollment issued for ${callsign} (role ${role}, ttl ${ttlMs / 60_000}m)`);
+  sendJson(res, 200, {
+    code: enrollment.code,
+    callsign: enrollment.callsign,
+    role: enrollment.role,
+    expiresAt: enrollment.expiresAt,
+    ttlMinutes: Math.round(ttlMs / 60_000),
+  });
+};
+
+/** Never returns a secret or a hash — there is nothing here an attacker could register with. */
+const handleAdminStationKeys: RouteHandler = async (_req, res) => {
+  const keys = dbListStationKeys().map((k) => ({
+    id: k.id,
+    callsign: k.callsign,
+    role: k.role,
+    label: k.label,
+    createdAt: k.created_at,
+    createdBy: k.created_by,
+    // The migration gate: do not set WALKIE_TALKIE_REQUIRE_STATION_KEY until every callsign
+    // (plus the slack bridge) shows one of these.
+    lastUsedAt: k.last_used_at,
+    revokedAt: k.revoked_at,
+  }));
+  sendJson(res, 200, { keys });
+};
+
+/**
+ * Revoke a key AND end the session it is holding.
+ *
+ * The second half is the non-obvious one. The session token minted at /register never
+ * re-consults the key, so flipping revoked_at alone leaves a revoked station sending and
+ * polling normally until the stale reaper collects it — 30s by default, and NEVER when
+ * WALKIE_TALKIE_STALE_GRACE_MS <= 0, which is exactly the setting a sleep-prone host is advised
+ * to use. Revocation that takes effect at the next hub restart is not revocation.
+ *
+ * Only the session actually proven with THIS key is kicked: a callsign currently registered on
+ * the join token, or on a different key, is not someone else's key to end.
+ */
+const handleAdminStationKeyRevoke: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { id?: string };
+  if (!body.id || typeof body.id !== "string") {
+    return sendError(res, 400, "Missing 'id' field");
+  }
+  const live = findUserByKeyId(body.id);
+  const revoked = revokeStationKey(body.id);
+  if (!revoked) {
+    return sendError(res, 404, `No active station key with id "${body.id}"`);
+  }
+  let kicked: string | null = null;
+  if (live && kickUser(live.name)) {
+    kicked = live.name;
+  }
+  console.log(`[station-key] revoked ${body.id} (${revoked.callsign})${kicked ? ` and kicked ${kicked}` : ""}`);
+  sendJson(res, 200, { ok: true, id: body.id, callsign: revoked.callsign, kicked });
+};
+
+/**
+ * Failed /enroll attempts per remote address.
+ *
+ * /enroll is unauthenticated by design — the code IS the credential, and requiring a second one
+ * to redeem the first would just move the problem. 128 bits single-use is not brute-forceable,
+ * so this counter exists to make a grind VISIBLE rather than to stop it. Deliberately not a
+ * block: on a tailnet a shared egress address is normal, and locking out an office because one
+ * person mistyped a code would be a worse failure than the attack it prevents.
+ */
+const enrollFailures = new Map<string, { count: number; firstAt: number }>();
+const ENROLL_FAILURE_WINDOW_MS = 10 * 60_000;
+
+function recordEnrollFailure(addr: string): number {
+  const now = Date.now();
+  // Sweep expired entries on the way past. The map is keyed by remote address and nothing else
+  // ever removes from it, so without this a long-running hub accumulates one permanent entry per
+  // address that ever fat-fingered a code.
+  for (const [key, value] of enrollFailures) {
+    if (now - value.firstAt > ENROLL_FAILURE_WINDOW_MS) enrollFailures.delete(key);
+  }
+  const entry = enrollFailures.get(addr);
+  if (!entry) {
+    enrollFailures.set(addr, { count: 1, firstAt: now });
+    return 1;
+  }
+  entry.count += 1;
+  return entry.count;
+}
+
+/** Test seam: the counter is process-lifetime state and would otherwise leak between test servers. */
+export function resetEnrollFailureState(): void {
+  enrollFailures.clear();
+}
+
+/**
+ * Redeem an enrollment code for a station key. Public, and returns the plaintext key EXACTLY
+ * once — nothing can recover it afterwards, including the operator. Losing a key means minting
+ * a new code, not retrieving the old key; that is the price of never storing it.
+ */
+const handleEnroll: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { code?: string };
+  const addr = req.socket.remoteAddress ?? "unknown";
+  if (!body.code || typeof body.code !== "string") {
+    return sendError(res, 400, "Missing 'code' field");
+  }
+  const redeemed = redeemEnrollment(body.code);
+  if (!redeemed) {
+    const failures = recordEnrollFailure(addr);
+    // One message for every failure mode: unknown, already redeemed, expired. Telling a caller
+    // which one it was would confirm that a code exists, which is the only thing a grinder wants.
+    console.warn(`[enroll] rejected code from ${addr} (${failures} failure(s) in the last 10 min)`);
+    return sendError(res, 403, "Invalid, expired, or already-redeemed enrollment code");
+  }
+  console.log(
+    `[enroll] issued key ${redeemed.keyId} for ${redeemed.callsign} (role ${redeemed.role}) to ${addr}` +
+      (redeemed.revokedPredecessorId ? ` — revoked predecessor ${redeemed.revokedPredecessorId}` : ""),
+  );
+  // A rotation must also end the session the displaced key was holding, for the same reason an
+  // explicit revoke does: the old session token outlives its key otherwise.
+  if (redeemed.revokedPredecessorId) {
+    const live = findUserByKeyId(redeemed.revokedPredecessorId);
+    if (live) kickUser(live.name);
+  }
+  // Scheme is taken from x-forwarded-proto when a proxy set it; the fleet is otherwise plain
+  // http over a tailnet. This is a convenience for the installer, not a security boundary.
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim() || "http";
+  const host = req.headers.host ?? "localhost";
+  sendJson(res, 200, {
+    key: redeemed.key,
+    callsign: redeemed.callsign,
+    role: redeemed.role,
+    hubUrl: `${proto}://${host}`,
+  });
+};
+
 const handleVersion: RouteHandler = async (_req, res) => {
   sendJson(res, 200, getBuildInfo());
 };
@@ -675,6 +921,8 @@ const publicRoutes: Record<string, { method: string; handler: RouteHandler }> = 
   "/version": { method: "GET", handler: handleVersion },
   "/users": { method: "GET", handler: handleUsers },
   "/channels": { method: "GET", handler: handleListChannels },
+  // Unauthenticated on purpose: the enrollment code is itself the credential. See handleEnroll.
+  "/enroll": { method: "POST", handler: handleEnroll },
 };
 
 const joinRoutes: Record<string, { method: string; handler: RouteHandler }> = {
@@ -695,6 +943,9 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/admin-agent-config-update": { method: "POST", handler: handleAdminAgentConfigUpdate },
   "/admin-agent-config-delete": { method: "POST", handler: handleAdminAgentConfigDelete },
   "/admin-agent-start": { method: "POST", handler: handleAdminAgentStart },
+  "/admin-station-key-create": { method: "POST", handler: handleAdminStationKeyCreate },
+  "/admin-station-keys": { method: "GET", handler: handleAdminStationKeys },
+  "/admin-station-key-revoke": { method: "POST", handler: handleAdminStationKeyRevoke },
 };
 
 const protectedRoutes: Record<string, { method: string; handler: RouteHandler }> = {
@@ -828,8 +1079,12 @@ export function createHubServer(
         sendError(res, 405, "Method not allowed");
         return;
       }
-      if (!authenticateBearer(req, joinToken)) {
-        sendError(res, 401, "Join token required");
+      // Join token OR a per-station key. The short-circuit matters: a station on the current
+      // bundle presents the join token, matches on the first test, and never touches the keys
+      // table — byte-for-byte the path it takes today, which is what makes this deployable
+      // against the live fleet with no client change.
+      if (!authenticateBearer(req, joinToken) && !resolveStationKey(req)) {
+        sendError(res, 401, "Join token or station key required");
         return;
       }
       joinRoute.handler(req, res).catch((e) => {
