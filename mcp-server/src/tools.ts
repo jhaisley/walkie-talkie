@@ -1,14 +1,9 @@
-import fs from "node:fs";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { clampPollWaitMs, HubClient } from "./client.js";
-import { clearStoredToken, readStoredToken, writeStoredToken } from "./token-store.js";
-import { clientBuild } from "./version.js";
-import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
+import { formatConnectedUsers } from "./helpers.js";
+import { createLocalDeps } from "./local-deps.js";
+import type { RadioDeps, RadioMessage } from "./radio-deps.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -23,56 +18,73 @@ function getMimeType(source: string): string {
   return MIME_TYPES[ext] ?? "image/png";
 }
 
-function fetchUrl(url: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const transport = url.startsWith("https") ? https : http;
-    transport
-      .get(url, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          fetchUrl(res.headers.location).then(resolve, reject);
-          return;
-        }
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}`));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
-        res.on("error", reject);
-      })
-      .on("error", reject);
-  });
+/** The guard every tool but radio_join and radio_out shares. Wording is a contract: stations
+ * (and their operators) match on it, so it must read identically on both transports. */
+const NOT_ON_AIR = "Not on the air. Use radio_join first.";
+
+type ContentBlock = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+
+/** Render a batch of delivered messages the way radio_check and radio_standby both do. */
+function renderMessages(messages: RadioMessage[], separator: string): ContentBlock[] {
+  const contentBlocks: ContentBlock[] = [];
+  for (const m of messages) {
+    if (m.image) {
+      contentBlocks.push({ type: "image" as const, data: m.image.data, mimeType: m.image.mimeType });
+    }
+    const imageTag = m.image ? " [image attached]" : "";
+    const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
+    contentBlocks.push({ type: "text" as const, text: line });
+  }
+  const channels = [...new Set(messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))];
+  if (channels.length > 0) {
+    contentBlocks.push({
+      type: "text" as const,
+      text: `${separator}IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels
+        .map((c) => `"${c}"`)
+        .join(", ")}`,
+    });
+  }
+  return contentBlocks;
 }
 
-let client: HubClient;
-let joinToken: string;
-let currentToken: string | null = null;
-let currentName: string | null = null;
+const KILLED_TEXT =
+  "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.";
 
-export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
-  client = new HubClient(hubUrl);
-  joinToken = joinTok;
-
-  const server = new McpServer({
-    name: "walkie-talkie",
-    version: "1.0.0",
-  });
+/**
+ * Register the twelve radio tools on `server`, closing over `deps`.
+ *
+ * Called once per McpServer instance. It has to be once per instance rather than once per
+ * process because `Protocol.connect()` refuses a second transport ("Already connected to a
+ * transport… or use a separate Protocol instance per connection"), so a hub serving many
+ * stations necessarily builds one McpServer per session — and each of those needs its own
+ * `deps.session`, or two stations share a callsign and a token.
+ */
+export function registerRadioTools(server: McpServer, deps: RadioDeps): void {
+  const { client, session } = deps;
 
   server.tool(
     "radio_join",
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
-    { name: z.string().describe("Your display name for this session") },
-    async ({ name }) => {
-      // Reclaim path: prefer the live token, else the one persisted by a previous process. The
-      // hub lets the proven owner take its own registration back, so a restarted station
-      // recovers its callsign immediately instead of waiting to be reaped out of it.
-      const priorToken = currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? undefined;
+    {
+      name: z.string().describe("Your display name for this session"),
+      token: z
+        .string()
+        .optional()
+        .describe(
+          "A session token previously issued for this callsign (see radio_token). Supply it to reclaim a registration this station still holds — required when the radio is hosted remotely, which has no local token store to reclaim from.",
+        ),
+    },
+    async ({ name, token }) => {
+      // Reclaim path: prefer an explicitly supplied token, then the live one, then the one
+      // persisted by a previous process. The hub lets the proven owner take its own
+      // registration back, so a restarted station recovers its callsign immediately instead
+      // of waiting to be reaped out of it.
+      const priorToken = token ?? session.token ?? deps.tokenStore.read(client.getBaseUrl(), name) ?? undefined;
       try {
-        const result = await client.register(name, joinToken, priorToken);
-        currentToken = result.token;
-        currentName = result.name;
-        writeStoredToken(client.getBaseUrl(), result.name, result.token);
+        const result = await client.register(name, deps.joinToken, priorToken);
+        session.token = result.token;
+        session.name = result.name;
+        deps.tokenStore.write(client.getBaseUrl(), result.name, result.token);
         // The hub tells us; do not re-derive it from the tokens (see handleRegister).
         const reclaimed = result.reclaimed === true;
         return {
@@ -80,12 +92,12 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
             {
               type: "text" as const,
               text:
-                `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` +
+                `Registered as "${session.name}". You are now in #all. You can now send and receive messages.` +
                 // Stable markers, in this order, for operators and fleet tooling reading the
                 // pane: whether a held name was taken back, and which bundle this station runs.
                 // Treated as a contract — see the client-build note in README.
                 (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "") +
-                ` [client ${clientBuild()}]`,
+                ` [client ${deps.clientBuildLabel}]`,
             },
           ],
         };
@@ -94,7 +106,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         // A held name we could not prove ownership of means our stored token is no longer the
         // one the hub has. Drop it so the next attempt is a clean first-time join rather than
         // a retry with a credential we now know is wrong.
-        if (msg.includes("already registered")) clearStoredToken(client.getBaseUrl(), name);
+        if (msg.includes("already registered")) deps.tokenStore.clear(client.getBaseUrl(), name);
         return {
           content: [{ type: "text" as const, text: `Registration failed: ${msg}` }],
           isError: true,
@@ -125,15 +137,15 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         .describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data."),
     },
     async ({ to, message, channel, image_data, image_mime_type }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
         const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : undefined;
-        const result = await client.send(currentToken, to, message, channel, image);
+        const result = await client.send(session.token, to, message, channel, image);
         return {
           content: [
             {
@@ -151,9 +163,19 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     },
   );
 
+  // The tool is registered on BOTH transports with the same name and schema, deliberately.
+  // Omitting it on the hub would make the tool list depend on which transport a station happens
+  // to be on, which is exactly the version-skew confusion the remote transport exists to delete.
+  // Only the description and the capability gates below differ.
+  const sendImageDescription = deps.readLocalFile
+    ? "Send an image from a local file path or URL. Much faster than passing base64 via radio_over."
+    : deps.fetchRemoteUrl
+      ? "Send an image from an http(s) URL. Local file paths are NOT available: this station's radio is hosted by the hub, so a path would name the hub's disk, not yours. For a local file, read it yourself and pass it to radio_over as image_data + image_mime_type."
+      : "Send an image. This station's radio is hosted by the hub, which reads neither your disk nor remote URLs, so both source forms are unavailable here: read the file yourself and pass it to radio_over as image_data + image_mime_type.";
+
   server.tool(
     "radio_send_image",
-    "Send an image from a local file path or URL. Much faster than passing base64 via radio_over.",
+    sendImageDescription,
     {
       to: z.string().describe("Recipient: @name or @all"),
       source: z.string().describe("Image file path or URL (http/https)"),
@@ -161,22 +183,44 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       channel: z.string().optional().describe("Channel to send to (default: #all)"),
     },
     async ({ to, source, message, channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
+          isError: true,
+        };
+      }
+      const isUrl = source.startsWith("http://") || source.startsWith("https://");
+      // Gate BEFORE any I/O. On the hub a local path would be an arbitrary file read on the
+      // container host by any holder of the shared join token (/secrets/config.json is a
+      // Salesforce + AlloyDB credential set), and a URL would be a request forger with reach
+      // to the GCP metadata server and every internal service.
+      if (isUrl && !deps.fetchRemoteUrl) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "This radio does not fetch remote URLs. Download the image yourself and pass it to radio_over as image_data + image_mime_type.",
+            },
+          ],
+          isError: true,
+        };
+      }
+      if (!isUrl && !deps.readLocalFile) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "This station is connected to a remote radio, so it cannot read files from your disk. Read the file yourself and pass it to radio_over as image_data + image_mime_type, or supply an http(s) URL if your hub allows it.",
+            },
+          ],
           isError: true,
         };
       }
       try {
-        let buf: Buffer;
-        if (source.startsWith("http://") || source.startsWith("https://")) {
-          buf = await fetchUrl(source);
-        } else {
-          buf = fs.readFileSync(source);
-        }
+        const buf = isUrl ? await deps.fetchRemoteUrl!(source) : deps.readLocalFile!(source);
         const data = buf.toString("base64");
         const mimeType = getMimeType(source);
-        const result = await client.send(currentToken, to, message ?? "", channel, { data, mimeType });
+        const result = await client.send(session.token, to, message ?? "", channel, { data, mimeType });
         return {
           content: [
             {
@@ -199,14 +243,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Check for new messages immediately without waiting. Returns any queued messages instantly. Use this instead of radio_standby when you want to poll periodically with sleep in between.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        const result = await client.inbox(currentToken);
+        const result = await client.inbox(session.token);
         if (result.messages.length === 0) {
           return {
             content: [{ type: "text" as const, text: "No new messages." }],
@@ -214,42 +258,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         }
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
         if (killed) {
-          currentToken = null;
-          currentName = null;
+          session.token = null;
+          session.name = null;
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
-              },
-            ],
+            content: [{ type: "text" as const, text: KILLED_TEXT }],
             isError: true,
           };
         }
-        const contentBlocks: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> =
-          [];
-        for (const m of result.messages) {
-          if (m.image) {
-            contentBlocks.push({
-              type: "image" as const,
-              data: m.image.data,
-              mimeType: m.image.mimeType,
-            });
-          }
-          const imageTag = m.image ? " [image attached]" : "";
-          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
-          contentBlocks.push({ type: "text" as const, text: line });
-        }
-        const channels = [
-          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel)),
-        ];
-        if (channels.length > 0) {
-          contentBlocks.push({
-            type: "text" as const,
-            text: `\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`,
-          });
-        }
-        return { content: contentBlocks };
+        return { content: renderMessages(result.messages, "\n") };
       } catch (e) {
         return {
           content: [{ type: "text" as const, text: `Check failed: ${(e as Error).message}` }],
@@ -269,15 +285,22 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       "only reduces how often an empty return wakes you, which is the main cost of sitting idle. " +
       "Values above this install's configured ceiling are clamped rather than rejected.",
     { wait_seconds: z.number().positive().optional() },
-    async ({ wait_seconds }) => {
-      if (!currentToken) {
+    async ({ wait_seconds }, extra) => {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        const result = await client.poll(currentToken, clampPollWaitMs(wait_seconds ? wait_seconds * 1000 : undefined));
+        const result = await client.poll(
+          session.token,
+          deps.clampStandbyMs(wait_seconds ? wait_seconds * 1000 : undefined),
+          // Only the in-process (hub-hosted) client uses this: it stops waiting when the tool
+          // call is cancelled. It must NOT be read as a dead station — a cancelled standby is
+          // an agent changing its mind, and treating that as a crash is what reaped the fleet.
+          extra?.signal,
+        );
         if (!result || result.messages.length === 0) {
           return {
             content: [{ type: "text" as const, text: "No new messages (poll timed out). Try again." }],
@@ -286,54 +309,20 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         // Check for kill signal from operator
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
         if (killed) {
-          currentToken = null;
-          currentName = null;
+          session.token = null;
+          session.name = null;
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
-              },
-            ],
+            content: [{ type: "text" as const, text: KILLED_TEXT }],
             isError: true,
           };
         }
-        const contentBlocks: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> =
-          [];
-
-        for (const m of result.messages) {
-          if (m.image) {
-            contentBlocks.push({
-              type: "image" as const,
-              data: m.image.data,
-              mimeType: m.image.mimeType,
-            });
-          }
-          const imageTag = m.image ? " [image attached]" : "";
-          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} → ${m.to}: ${m.content}${imageTag}`;
-          contentBlocks.push({ type: "text" as const, text: line });
-        }
-
-        // Remind the agent to reply in the same channel the message was received on
-        const channels = [
-          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel)),
-        ];
-        const hint =
-          channels.length > 0
-            ? `\n\nIMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
-            : "";
-        if (hint) {
-          contentBlocks.push({ type: "text" as const, text: hint });
-        }
-        return {
-          content: contentBlocks,
-        };
+        return { content: renderMessages(result.messages, "\n\n") };
       } catch (e) {
         const msg = (e as Error).message;
         if (msg === "Unauthorized") {
-          if (currentName) clearStoredToken(client.getBaseUrl(), currentName);
-          currentToken = null;
-          currentName = null;
+          if (session.name) deps.tokenStore.clear(client.getBaseUrl(), session.name);
+          session.token = null;
+          session.name = null;
           return {
             content: [
               {
@@ -357,14 +346,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "List all currently connected users on the hub and available channels.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
+        const [users, channels] = await Promise.all([client.users(session.token), client.listChannels(session.token)]);
         const userText = formatConnectedUsers(users);
         const channelText =
           channels.length > 0
@@ -392,14 +381,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Create a new channel on the hub. You will automatically join the channel.",
     { name: z.string().describe("Channel name (with or without # prefix)") },
     async ({ name }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        const result = await client.createChannel(currentToken, name);
+        const result = await client.createChannel(session.token, name);
         return {
           content: [
             {
@@ -422,14 +411,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Join an existing channel to send and receive messages in it.",
     { channel: z.string().describe("Channel name to join (e.g. #my-channel)") },
     async ({ channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        await client.joinChannel(currentToken, channel);
+        await client.joinChannel(session.token, channel);
         return {
           content: [
             {
@@ -452,14 +441,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Leave a channel. You cannot leave #all.",
     { channel: z.string().describe("Channel name to leave") },
     async ({ channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        await client.leaveChannel(currentToken, channel);
+        await client.leaveChannel(session.token, channel);
         return {
           content: [
             {
@@ -485,14 +474,14 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       user: z.string().describe("User to invite (e.g. @agent-name)"),
     },
     async ({ channel, user }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
       try {
-        await client.inviteToChannel(currentToken, channel, user);
+        await client.inviteToChannel(session.token, channel, user);
         return {
           content: [
             {
@@ -520,27 +509,35 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       "turn-based CLI it would detect a message with no way to report it.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text" as const, text: NOT_ON_AIR }],
           isError: true,
         };
       }
-      const waitScript = resolveWaitScript(path.dirname(fileURLToPath(import.meta.url)));
+      // A remote radio has no station-side script to point at, and probing the hub's own disk
+      // would answer a question nobody asked. Say which it is rather than emitting the local
+      // "not installed on this station" note from a machine that is not the station.
+      const local = deps.waitScriptPath !== undefined;
+      const waitScript = local ? deps.waitScriptPath!() : null;
       return {
         content: [
           {
             type: "text" as const,
             text: JSON.stringify({
               hubUrl: client.getBaseUrl(),
-              clientBuild: clientBuild(),
-              token: currentToken,
+              clientBuild: deps.clientBuildLabel,
+              // Deliberately returned to remote stations too: it is what lets a listener
+              // process (Python, so a Windows station can run it) talk HTTP to /poll directly
+              // while the agent's own MCP session stays remote.
+              token: session.token,
               waitScript,
               // Stated rather than left to be inferred from a bare null. A station reading null
               // should stop looking for the file; one reading a path should know the mechanism
               // has a host requirement beyond the file existing.
-              waitScriptNote:
-                waitScript === null
+              waitScriptNote: !local
+                ? "This station's radio is hosted by the hub, so there is no locally-installed listener script. The hubUrl and token above are all a listener needs; the shell script ships only with a locally-installed radio. Otherwise use radio_standby; wait_seconds sets how long it blocks."
+                : waitScript === null
                   ? "No shell listener is installed on this station. Use radio_standby instead; wait_seconds sets how long it blocks."
                   : "Run this with the hubUrl and token above. Requires a host that starts a turn when a background task exits; a strictly turn-based CLI cannot be woken this way.",
             }),
@@ -551,19 +548,19 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
   );
 
   server.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
-    if (!currentToken) {
+    if (!session.token) {
       return {
         content: [{ type: "text" as const, text: "Not registered." }],
       };
     }
     try {
-      await client.unregister(currentToken);
-      const name = currentName;
+      await client.unregister(session.token);
+      const name = session.name;
       // A deliberate sign-off ends the claim: keeping the token would let a later process
       // silently take a callsign the operator intended to release.
-      if (name) clearStoredToken(client.getBaseUrl(), name);
-      currentToken = null;
-      currentName = null;
+      if (name) deps.tokenStore.clear(client.getBaseUrl(), name);
+      session.token = null;
+      session.name = null;
       return {
         content: [{ type: "text" as const, text: `Unregistered "${name}". Disconnected from hub.` }],
       };
@@ -574,6 +571,20 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       };
     }
   });
+}
 
+/**
+ * The stdio entry point, unchanged in signature and in every string it emits.
+ *
+ * Kept so mcp-server/src/index.ts and the plugin bundle need no edit at all: the deps refactor
+ * has to be invisible to installed stations, which is the only way to land it without a fleet
+ * reinstall.
+ */
+export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
+  const server = new McpServer({
+    name: "walkie-talkie",
+    version: "1.0.0",
+  });
+  registerRadioTools(server, createLocalDeps(hubUrl, joinTok));
   return server;
 }

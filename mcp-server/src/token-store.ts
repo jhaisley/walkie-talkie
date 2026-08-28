@@ -42,7 +42,12 @@ export function readStoredToken(hubUrl: string, name: string, env: NodeJS.Proces
   }
 }
 
-export function writeStoredToken(hubUrl: string, name: string, token: string, env: NodeJS.ProcessEnv = process.env): void {
+export function writeStoredToken(
+  hubUrl: string,
+  name: string,
+  token: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
   try {
     const dir = stateDir(env);
     fs.mkdirSync(dir, { recursive: true });
