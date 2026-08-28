@@ -5,7 +5,9 @@ import { initGeneralChannel } from "./channels.js";
 import { initDB } from "./db.js";
 import { closeAllSSEClients } from "./events.js";
 import { autoLaunchAgents } from "./launcher.js";
+import { HUB_SHUTDOWN_NOTICE } from "./messages.js";
 import { closeAllPolls } from "./polling.js";
+import { restoreFleet } from "./restore.js";
 import { enqueueAndDeliver, ensureQueue } from "./router.js";
 import { createHubServer } from "./server.js";
 
@@ -26,6 +28,9 @@ if (!adminToken) {
 
 initDB();
 initGeneralChannel();
+// Rehydrate the fleet BEFORE the server can accept a request, so no station ever sees the
+// half-restored state (authenticated but with no channel memberships).
+restoreFleet();
 
 const server = createHubServer(port, adminToken, joinToken, hubHost);
 
@@ -47,14 +52,17 @@ function handleShutdown(): void {
     process.stdin.setRawMode(false);
   }
   console.log("\n[shutdown] Notifying connected users...");
-  // Send RADIO_KILLED to all connected users so they disconnect gracefully
+  // Tell everyone the hub is going away, but NOT with RADIO_KILLED — that prefix means "you are
+  // disconnected, stop calling radio tools, do not rejoin", and a restart no longer destroys the
+  // registration it would be telling them about. See messages.ts for why the new prefix is safe
+  // to send to the already-deployed bundles.
   for (const name of getRegisteredUsers()) {
     ensureQueue(name);
     enqueueAndDeliver(name, {
       id: randomUUID(),
       from: "system",
       to: name,
-      content: "RADIO_KILLED: Hub is shutting down.",
+      content: HUB_SHUTDOWN_NOTICE,
       channel: "#all",
       timestamp: Date.now(),
     });

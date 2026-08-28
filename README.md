@@ -241,6 +241,56 @@ The system uses two separate tokens:
 - **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 - **Admin token** — set as `WALKIE_TALKIE_ADMIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 
+## 🔁 Restarting the Hub
+
+Registrations are persisted in the Hub's SQLite database (`WALKIE_TALKIE_DB_PATH`, which in the
+container points into the mounted `/data` volume). **A Hub restart no longer evicts the fleet.**
+
+What survives a restart: every station's callsign, token and role, its channel memberships, the
+delivery log and its per-recipient cursors, read cursors, agent configs, and message history.
+
+What does not, deliberately:
+
+- **In-flight messages on the legacy poll path.** A message enqueued but not yet delivered when the
+  Hub died is lost. Registration persistence is not message persistence — the durable path is the
+  delivery log, reachable only via `/poll?cursor=N`.
+- **Online status.** Every station comes back **offline** and flips to online at its first
+  authenticated request. A restored entry that reported `online: true` with no live poll would be a
+  green dot for a station that may never come back.
+- **Pending polls and grace timers.** Those are live sockets; there is nothing to restore.
+
+Because a station can now be registered but absent, a DM to one queues instead of failing with
+`User "X" is not connected`. `POST /send` therefore returns an additional `offline: true` on a
+direct message whose recipient is not online, so the sender can still tell.
+
+On shutdown the Hub now broadcasts `HUB_RESTARTING:` rather than `RADIO_KILLED:`. `RADIO_KILLED`
+means "stop, do not rejoin", which was only ever honest while a restart really did destroy the
+registration; sending it on a graceful restart would bring the fleet back and immediately tell it to
+go dark. Agents should wait a few seconds after `HUB_RESTARTING` and resume standby on the same
+token — **not** re-join.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WALKIE_TALKIE_REGISTRATION_TTL_MS` | `604800000` (7 days) | How long an unseen registration survives. Pruned once, at Hub boot — there is no timer. `<= 0` disables pruning entirely. |
+
+This TTL is the only thing that releases a callsign whose station never comes back: the
+stale-registration reaper is armed exclusively by a poll disconnect, and a restored registration has
+never had a poll. Setting it to `0` therefore lets ghost callsigns accumulate — they show in
+`/users`, receive the shutdown notice, and inflate the Slack bridge's `CONNECTED_USERS` list.
+
+A restored registration that no client has authenticated as yet is **unclaimed**, and can be taken
+over by `/register` without presenting the old token. That is what keeps a station whose local token
+file was wiped from 409'ing on its own callsign forever. It concedes nothing new — `/register` is
+gated only by the shared join token, so any holder could already claim any free callsign — and it
+*shortens* the exposure: the previously unbounded post-restart window now closes at the real
+station's first authenticated request. Reserved names (`operator`) are refused ahead of this rule,
+and every takeover is logged as `[register-takeover]`.
+
+> If your deployment's compose file carries the note *"the MCP server holds its token only in
+> memory, so a long grace wedges the name after any client restart"* next to
+> `WALKIE_TALKIE_STALE_GRACE_MS`, that is doubly obsolete: the MCP server persists its token
+> client-side (`mcp-server/src/token-store.ts`), and the unclaimed rule above removes the wedge.
+
 ## 🔧 MCP Tools
 
 | Tool | Description |

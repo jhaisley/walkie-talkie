@@ -19,6 +19,19 @@ export interface ChannelRow {
   created_at: number;
 }
 
+/**
+ * A station's registration as persisted. `last_seen_at` stays null until the station makes its
+ * first authenticated request, which is why every TTL comparison has to COALESCE it back to
+ * `registered_at` rather than treat null as "ancient" and prune a station that just joined.
+ */
+export interface RegistrationRow {
+  name: string;
+  token: string;
+  role: string;
+  registered_at: number;
+  last_seen_at: number | null;
+}
+
 let db: Database.Database;
 
 export function initDB(): void {
@@ -119,6 +132,26 @@ export function initDB(): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_deliveries_recipient_id
     ON deliveries (recipient, id)
+  `);
+
+  // Station registrations. Until this table existed the roster lived only in auth.ts's Maps, so
+  // every hub restart evicted the whole fleet: each station's next call 401'd, which is the same
+  // bare symptom as being auto-unregistered by the stale reaper and was repeatedly misdiagnosed as
+  // one. The container mounts a volume at /data and WALKIE_TALKIE_DB_PATH points into it, so a row
+  // here survives a container restart AND an image rebuild.
+  //
+  // `token` is stored raw. The same volume already holds the join token and the full message
+  // history, and the join token alone lets its holder claim any free callsign, so hashing station
+  // tokens would protect nothing that is not already lost if the volume leaks. UNIQUE on token
+  // gives the index the auth path would otherwise want, so no separate index is needed.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS registrations (
+      name          TEXT PRIMARY KEY,
+      token         TEXT NOT NULL UNIQUE,
+      role          TEXT NOT NULL,
+      registered_at INTEGER NOT NULL,
+      last_seen_at  INTEGER
+    )
   `);
 
   // Seed #all if it doesn't exist
@@ -228,8 +261,13 @@ function parseMessageRow(row: Record<string, unknown>): Message {
  * without bound for as long as the hub runs — unlike `messages`, which the #all cap prunes.
  *
  * Keeping the newest N per recipient bounds it while leaving at-least-once intact for any client
- * whose cursor is inside the window. A client further behind than N messages has already lost its
- * registration to the stale reaper long before, so the guarantee it would be owed is moot.
+ * whose cursor is inside the window. This used to be justified by "a client further behind than N
+ * messages has already lost its registration to the stale reaper long before, so the guarantee it
+ * would be owed is moot" — that premise died when registrations became durable. A station can now
+ * be absent for days, survive a hub restart, and come back on the same registration holding a
+ * cursor older than the window, in which case it silently skips the overflow. At 2000 rows and a
+ * 7-day registration TTL that is not reachable for a small fleet, but the two numbers are now
+ * coupled and should be moved together.
  * Configurable via WALKIE_TALKIE_DELIVERY_RETENTION; invalid/absent falls back to the default.
  */
 const DEFAULT_DELIVERY_RETENTION = 2000;
@@ -433,6 +471,49 @@ export function dbUpdateAgentConfig(
 export function dbDeleteAgentConfig(id: string): boolean {
   const result = db.prepare("DELETE FROM agent_configs WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+// Registration persistence. auth.ts keeps its Maps as the request-path cache and writes through
+// to these on every mutation, so the DB is the boot-time source of truth and never the hot path.
+
+export function dbUpsertRegistration(name: string, token: string, role: string, registeredAt: number): void {
+  // A re-register mints a new token, so last_seen_at is reset to NULL: the new token has not been
+  // used yet, and carrying the old stamp forward would make the TTL window start in the past.
+  db.prepare(
+    `INSERT INTO registrations (name, token, role, registered_at, last_seen_at) VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT(name) DO UPDATE SET token = excluded.token, role = excluded.role,
+       registered_at = excluded.registered_at, last_seen_at = NULL`,
+  ).run(name, token, role, registeredAt);
+}
+
+export function dbDeleteRegistration(name: string): void {
+  db.prepare("DELETE FROM registrations WHERE name = ?").run(name);
+}
+
+export function dbListRegistrations(): RegistrationRow[] {
+  return db
+    .prepare("SELECT name, token, role, registered_at, last_seen_at FROM registrations ORDER BY registered_at")
+    .all() as RegistrationRow[];
+}
+
+export function dbTouchRegistrationSeen(name: string, ts: number): void {
+  db.prepare("UPDATE registrations SET last_seen_at = ? WHERE name = ?").run(ts, name);
+}
+
+/**
+ * Drop registrations last seen before `cutoffMs`, returning the names dropped so the caller can
+ * log them. This is the ONLY thing that bounds the roster now that a registration outlives the
+ * process: the stale reaper is armed exclusively by a poll disconnect, and a restored entry has
+ * never had a poll, so without this nothing would ever release a callsign whose station is gone
+ * for good.
+ */
+export function dbPruneRegistrations(cutoffMs: number): string[] {
+  const rows = db
+    .prepare("SELECT name FROM registrations WHERE COALESCE(last_seen_at, registered_at) < ?")
+    .all(cutoffMs) as { name: string }[];
+  if (rows.length === 0) return [];
+  db.prepare("DELETE FROM registrations WHERE COALESCE(last_seen_at, registered_at) < ?").run(cutoffMs);
+  return rows.map((r) => r.name);
 }
 
 function dbPruneAllChannel(): void {

@@ -5,8 +5,11 @@ import {
   getRegisteredUsers,
   getUserRole,
   getUserToken,
+  isUnclaimed,
   isUserRegistered,
+  markClaimed,
   registerUser,
+  touchSeen,
   unregisterUser,
 } from "./auth.js";
 import {
@@ -92,9 +95,10 @@ const handleRegister: RouteHandler = async (req, res) => {
     return sendError(res, 400, "Missing or invalid 'name' field");
   }
   // "operator" is the dashboard's identity, and it is created lazily by handleAdminSend on the
-  // first admin message rather than seeded at boot. Registrations live only in memory, so every
-  // hub restart leaves the name unclaimed until someone sends from the dashboard — and in that
-  // window any holder of the join token could take it via /register.
+  // first admin message rather than seeded at boot. On a hub that has never had an admin message,
+  // the name is simply free; on one that has, the registration is restored but UNCLAIMED (the
+  // dashboard authenticates with the admin token, not a user token, so it never claims it) — and
+  // in either window any holder of the join token could take it via /register.
   //
   // That matters more than an ordinary name collision: the dashboard renders anything `from`
   // "operator" with operator styling, agents are instructed to execute operator messages as
@@ -111,11 +115,27 @@ const handleRegister: RouteHandler = async (req, res) => {
     // is not, because a fresh register also mints a new token — a station whose name had
     // already been reaped would then be told it reclaimed something when it started clean.
     const reclaimed = isUserRegistered(body.name);
-    // Allow reconnection only if the caller proves ownership with the old token
-    if (isUserRegistered(body.name)) {
-      const existingToken = getUserToken(body.name);
-      if (!body.oldToken || body.oldToken !== existingToken) {
+    // A registration restored from the DB at boot that nobody has authenticated as yet is a HINT,
+    // not a lock. Reconnection normally requires proving ownership with the old token, but a
+    // station whose client-side token is gone (token-store file wiped, machine reimaged, or
+    // clearStoredToken after a 401) has nothing to prove with. Before registrations persisted,
+    // the restart itself freed the name and that station self-healed; with a naive persistence it
+    // would 409 on its own callsign forever, and no stale timer would ever release it because the
+    // reaper is armed only by a poll disconnect and a restored entry has never polled.
+    //
+    // Letting an unclaimed entry be taken over concedes nothing new: /register is gated only by
+    // the SHARED join token, so any holder can already claim any free callsign. What changes is
+    // the size of the window — today's post-restart free-for-all is unbounded, this one closes at
+    // the real station's first authenticated request (markClaimed at the protected-route gate).
+    // isReservedName runs ABOVE this, so "operator" is never takeable through it.
+    if (reclaimed) {
+      const proves = !!body.oldToken && body.oldToken === getUserToken(body.name);
+      if (!proves && !isUnclaimed(body.name)) {
         return sendError(res, 409, `User "${body.name}" is already registered`);
+      }
+      if (!proves) {
+        // The one place a callsign changes hands without proof. Loud on purpose.
+        console.log(`[register-takeover] ${body.name} claimed an unclaimed restored registration (no oldToken)`);
       }
       removePoll(body.name);
       removeQueue(body.name);
@@ -129,6 +149,8 @@ const handleRegister: RouteHandler = async (req, res) => {
     }
     const role = body.role === "bridge" ? "bridge" : "agent";
     const user = registerUser(body.name, role);
+    // Whoever just registered holds the new token, so the takeover window is closed either way.
+    markClaimed(body.name);
     ensureQueue(body.name);
     setOnline(body.name);
     // Auto-join #all
@@ -200,7 +222,15 @@ const handleSend: RouteHandler = async (req, res, userName) => {
       image: message.image,
     });
     console.log(`[send] ${userName} -> ${body.to} (${channel}): ${content}${body.image ? " [+image]" : ""}`);
-    sendJson(res, 200, { id: message.id, to: message.to });
+    // Registrations now outlive the hub process, so routeMessage's isUserRegistered() gate passes
+    // for a station that is registered but has not come back since the last restart. The sender
+    // used to get an immediate "User X is not connected"; now the message just queues. That is the
+    // semantics we want (registered, merely offline), but losing the signal entirely would leave a
+    // station talking to a corpse with a 200 every time. Additive field, so the already-deployed
+    // bundles ignore it. Only meaningful for a DM: a broadcast has no single recipient.
+    const payload: { id: string; to: string; offline?: boolean } = { id: message.id, to: message.to };
+    if (message.to !== "@all") payload.offline = !isOnline(message.to);
+    sendJson(res, 200, payload);
   } catch (e) {
     sendError(res, 404, (e as Error).message);
   }
@@ -872,6 +902,13 @@ export function createHubServer(
         setOnline(userName);
         broadcast({ type: "status", name: userName, online: true, timestamp: Date.now() });
       }
+      // The single chokepoint every authenticated request passes through, which is why the two
+      // registration-persistence side effects live here rather than in each handler.
+      // markClaimed: the holder of the token has now proved it, so a restored entry stops being
+      // takeable by any join-token holder. touchSeen: keeps the TTL window alive, debounced
+      // internally so this is not a DB write per request.
+      markClaimed(userName);
+      touchSeen(userName);
       protectedRoute.handler(req, res, userName).catch((e) => {
         sendError(res, 500, (e as Error).message);
       });

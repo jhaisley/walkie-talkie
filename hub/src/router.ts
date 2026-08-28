@@ -17,6 +17,16 @@ export function removeQueue(name: string): void {
   messageQueues.delete(name);
 }
 
+/**
+ * Drop every in-memory queue, as a fresh process would have it. Exists so a test can simulate a
+ * hub restart in-process; a real restart gets this for free. The queues are at-most-once scratch
+ * — the durable path is the deliveries log — so losing them here is the honest simulation, not a
+ * shortcut.
+ */
+export function resetRouterState(): void {
+  messageQueues.clear();
+}
+
 export function drainQueue(name: string): Message[] {
   const queue = messageQueues.get(name);
   if (!queue || queue.length === 0) return [];
