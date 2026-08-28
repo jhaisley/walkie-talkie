@@ -762,6 +762,13 @@ export function getDashboardHTML(
     border-color: rgba(129,140,248,0.18);
     border-left: 3px solid var(--accent);
   }
+  /* Wall announcements: system broadcasts (restart warnings etc). Deliberately distinct from
+     operator styling — a wall message is informational and carries no authority to task agents. */
+  .msg.wall {
+    background: var(--yellow-soft);
+    border-color: rgba(251,191,36,0.2);
+    border-left: 3px solid var(--yellow);
+  }
   .msg.operator:hover {
     border-color: rgba(129,140,248,0.3);
     border-left-color: var(--accent);
@@ -2070,7 +2077,7 @@ export function getDashboardHTML(
         if (data.messages && data.messages.length > 0) {
           clearEmpty();
           for (const msg of data.messages) {
-            const cls = msg.from === "operator" ? "message operator" : "message";
+            const cls = msg.from === "operator" ? "message operator" : msg.from === "wall" ? "message wall" : "message";
             const channelTag = '<span class="channel-tag">' + (msg.channel || "#all") + '</span>';
             addMessage(
               '<span class="time">' + formatTime(msg.timestamp) + '</span>' +
@@ -2127,7 +2134,7 @@ export function getDashboardHTML(
         if (users.has(ev.from)) users.set(ev.from, true);
         const existingTimer = typingUsers.get(ev.from);
         if (existingTimer) { clearTimeout(existingTimer.timeoutId); typingUsers.delete(ev.from); renderUsers(); renderTypingBar(); }
-        const cls = ev.from === "operator" ? "message operator" : "message";
+        const cls = ev.from === "operator" ? "message operator" : ev.from === "wall" ? "message wall" : "message";
         const channelTag = '<span class="channel-tag">' + (ev.channel || "#all") + '</span>';
         addMessage(
           '<span class="time">' + formatTime(ev.timestamp) + '</span>' +
