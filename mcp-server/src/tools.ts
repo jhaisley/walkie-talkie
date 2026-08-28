@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { clampPollWaitMs, HubClient } from "./client.js";
+import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 import { clearStoredToken, readStoredToken, writeStoredToken } from "./token-store.js";
 import { clientBuild } from "./version.js";
-import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
