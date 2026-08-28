@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { clampPollWaitMs, HubClient } from "./client.js";
 import { clearStoredToken, readStoredToken, writeStoredToken } from "./token-store.js";
+import { clientBuild } from "./version.js";
 import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 
 const MIME_TYPES: Record<string, string> = {
@@ -72,14 +73,19 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         currentToken = result.token;
         currentName = result.name;
         writeStoredToken(client.getBaseUrl(), result.name, result.token);
-        const reclaimed = priorToken !== undefined && priorToken !== currentToken;
+        // The hub tells us; do not re-derive it from the tokens (see handleRegister).
+        const reclaimed = result.reclaimed === true;
         return {
           content: [
             {
               type: "text" as const,
               text:
                 `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` +
-                (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : ""),
+                // Stable markers, in this order, for operators and fleet tooling reading the
+                // pane: whether a held name was taken back, and which bundle this station runs.
+                // Treated as a contract — see the client-build note in README.
+                (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "") +
+                ` [client ${clientBuild()}]`,
             },
           ],
         };
@@ -522,6 +528,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
             type: "text" as const,
             text: JSON.stringify({
               hubUrl: client.getBaseUrl(),
+              clientBuild: clientBuild(),
               token: currentToken,
               waitScript,
             }),
