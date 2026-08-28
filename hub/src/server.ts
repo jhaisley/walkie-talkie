@@ -48,6 +48,7 @@ import {
   onPollDisconnect,
   recordSeen,
   removePoll,
+  resolvePollWindowMs,
   setOffline,
   setOnline,
 } from "./polling.js";
@@ -231,7 +232,9 @@ const handlePoll: RouteHandler = async (req, res, userName) => {
     if (Number.isFinite(n)) cursor = n;
   }
 
-  addPoll(userName!, req, res, cursor);
+  // ?wait=<ms> lets a client pick a window that fits ITS MCP tool-call timeout; absent or
+  // unusable falls back to the hub default, so existing clients are unaffected.
+  addPoll(userName!, req, res, cursor, resolvePollWindowMs(url.searchParams.get("wait")));
   if (wasOffline) {
     setOnline(userName!);
     broadcast({ type: "status", name: userName!, online: true, timestamp: Date.now() });

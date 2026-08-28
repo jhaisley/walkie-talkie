@@ -14,6 +14,52 @@ interface HubResponse<T = unknown> {
   data: T;
 }
 
+/**
+ * How long radio_standby waits on an empty channel (WALKIE_TALKIE_POLL_WAIT_MS, default 30s),
+ * and the ceiling an agent may request per call (WALKIE_TALKIE_MAX_POLL_WAIT_MS, default 30s so
+ * an install that has not opted in cannot be pushed past what its host tolerates).
+ *
+ * These are per-CLIENT values because the binding constraint is the MCP client's tool-call
+ * timeout: exceed it and the whole MCP server is dropped as unresponsive. Claude Code tolerates
+ * a long call; other CLIs default far lower. The installer sets both to match the CLI it is
+ * installing for, which is why the defaults here stay conservative.
+ *
+ * This is the main lever on idle cost — every empty return is a model turn, so a 30s window
+ * costs ~120 turns per station per hour and a 20min window ~3. It does NOT affect delivery
+ * latency: the hub answers a pending poll the moment a message is routed, so the window only
+ * bounds how long an EMPTY wait lasts.
+ */
+const DEFAULT_POLL_WAIT_MS = 30_000;
+const DEFAULT_MAX_POLL_WAIT_MS = 30_000;
+/** Head-start the hub is asked to answer within, so it always replies before we abort. */
+const HUB_MARGIN_MS = 5_000;
+
+function envMs(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export function resolvePollWaitMs(env: NodeJS.ProcessEnv = process.env): number {
+  return envMs(env.WALKIE_TALKIE_POLL_WAIT_MS, DEFAULT_POLL_WAIT_MS);
+}
+
+export function resolveMaxPollWaitMs(env: NodeJS.ProcessEnv = process.env): number {
+  // The ceiling can never be below the configured default, or the default would be unreachable.
+  return Math.max(envMs(env.WALKIE_TALKIE_MAX_POLL_WAIT_MS, DEFAULT_MAX_POLL_WAIT_MS), resolvePollWaitMs(env));
+}
+
+/**
+ * Clamp an agent-requested standby window. Anything unusable falls back to the configured
+ * default rather than erroring: a bad number should not cost the station its listening turn.
+ */
+export function clampPollWaitMs(requestedMs: number | undefined, env: NodeJS.ProcessEnv = process.env): number {
+  if (requestedMs === undefined || !Number.isFinite(requestedMs) || requestedMs <= 0) {
+    return resolvePollWaitMs(env);
+  }
+  return Math.min(Math.max(requestedMs, 1_000), resolveMaxPollWaitMs(env));
+}
+
 export class HubClient {
   private baseUrl: URL;
 
@@ -148,7 +194,7 @@ export class HubClient {
    */
   async poll(
     token: string,
-    timeoutMs = 30_000,
+    timeoutMs = resolvePollWaitMs(),
   ): Promise<{
     messages: Array<{
       id: string;
@@ -173,7 +219,11 @@ export class HubClient {
         }>;
       }>({
         method: "GET",
-        path: "/poll",
+        // Ask the hub for a window HUB_MARGIN_MS shorter than our own abort. The hub answering
+        // first is what keeps an idle poll from looking like a dropped connection: a
+        // client-side abort fires the hub's disconnect path, which marks the station offline
+        // and arms the stale-registration grace that reaped idle stations across the fleet.
+        path: `/poll?wait=${Math.max(1_000, timeoutMs - HUB_MARGIN_MS)}`,
         token,
         timeoutMs,
       });
