@@ -331,26 +331,22 @@ export function sendStationMessage(
   image?: MessageImage,
 ): Message {
   const ch = channel || "#all";
-  // A broadcast into #all reaches every station and costs every station a wake — it is the
-  // announcement space, and announcing is a granted capability (the wall allow-list), not a
-  // default. Enforced HERE because this is the one chokepoint both transports share: the HTTP
-  // /send handler and a hub-hosted session's radio_over both land in this function, so a check
-  // in either handler alone would miss the other transport. Scoped deliberately:
-  //   - only to === "@all" AND the #all channel — a DM (to @name) in #all still works, and an
-  //     @all inside a purpose channel (#infra etc.) reaches only that room's members, who
-  //     opted into its traffic;
-  //   - "wall" itself is exempt (it IS the announcement identity);
-  //   - the operator is unaffected structurally — /admin-send calls routeMessage directly.
+  // #all is the ANNOUNCEMENT space, and sending into it is a granted capability (the wall
+  // allow-list), not a default — for every kind of send. The obvious gate (broadcasts only) was
+  // tried first and rejected: a DM inside #all still lands in the #all history that every
+  // station and the dashboard read, so it is not private in any sense that matters, and it kept
+  // #all as a place ordinary traffic accumulates. Conversation belongs in purpose channels; this
+  // channel exists so that anything appearing in it is worth every station's attention.
+  //
+  // Enforced HERE because this is the one chokepoint both transports share: the HTTP /send
+  // handler and a hub-hosted session's radio_over both land in this function, so a check in
+  // either handler alone would miss the other transport. "wall" itself is exempt (it IS the
+  // announcement identity), and the operator is unaffected structurally — /admin-send calls
+  // routeMessage directly. "*" on the allow-list lifts the restriction entirely.
   const wallAllowed = resolveWallAllowed();
-  if (
-    to === "@all" &&
-    normalizeChannel(ch) === "#all" &&
-    from !== "wall" &&
-    !wallAllowed.has("*") &&
-    !wallAllowed.has(from)
-  ) {
+  if (normalizeChannel(ch) === "#all" && from !== "wall" && !wallAllowed.has("*") && !wallAllowed.has(from)) {
     throw new Error(
-      `Broadcasts to #all are restricted. DM a station, use a purpose channel, or ask the operator to add "${from}" to WALKIE_TALKIE_WALL_ALLOWED.`,
+      `#all is announcement-only. Use a purpose channel (radio_channels lists them; radio_channel_create makes one), or ask the operator to add "${from}" to WALKIE_TALKIE_WALL_ALLOWED.`,
     );
   }
   const message = routeMessage(from, to, content, ch, image);
