@@ -27,6 +27,10 @@ export interface TestServerOptions {
 const ADMIN_TOKEN = "test-admin-token";
 const JOIN_TOKEN = "test-join-token";
 
+// Suites that exercise broadcast mechanics should not also be testing the wall gate; default
+// the allow-list open unless a suite (wall.test.ts) has already chosen its own value.
+process.env.WALKIE_TALKIE_WALL_ALLOWED ??= "*";
+
 export async function startTestServer(options: TestServerOptions = {}): Promise<TestContext> {
   // Reset in-memory state
   resetAuthState();

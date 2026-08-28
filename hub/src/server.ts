@@ -21,6 +21,7 @@ import {
   isChannelMember,
   joinChannel,
   leaveChannel,
+  normalizeChannel,
   removeChannel,
 } from "./channels.js";
 import { getDashboardHTML } from "./dashboard.js";
@@ -86,7 +87,9 @@ const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
  * matches `from === "operator"` exactly, so a differently-cased variant would not inherit the
  * styling, but it would still be a confusing impersonation and nothing legitimate needs it.
  */
-const RESERVED_NAMES = new Set(["operator"]);
+// "wall" is the system-announcement identity (POST /wall). Reserved for the same reason as
+// "operator": agents treat these senders specially, so a squatter inherits that trust.
+const RESERVED_NAMES = new Set(["operator", "wall"]);
 export function isReservedName(name: string): boolean {
   return RESERVED_NAMES.has(name.trim().toLowerCase());
 }
@@ -328,6 +331,28 @@ export function sendStationMessage(
   image?: MessageImage,
 ): Message {
   const ch = channel || "#all";
+  // A broadcast into #all reaches every station and costs every station a wake — it is the
+  // announcement space, and announcing is a granted capability (the wall allow-list), not a
+  // default. Enforced HERE because this is the one chokepoint both transports share: the HTTP
+  // /send handler and a hub-hosted session's radio_over both land in this function, so a check
+  // in either handler alone would miss the other transport. Scoped deliberately:
+  //   - only to === "@all" AND the #all channel — a DM (to @name) in #all still works, and an
+  //     @all inside a purpose channel (#infra etc.) reaches only that room's members, who
+  //     opted into its traffic;
+  //   - "wall" itself is exempt (it IS the announcement identity);
+  //   - the operator is unaffected structurally — /admin-send calls routeMessage directly.
+  const wallAllowed = resolveWallAllowed();
+  if (
+    to === "@all" &&
+    normalizeChannel(ch) === "#all" &&
+    from !== "wall" &&
+    !wallAllowed.has("*") &&
+    !wallAllowed.has(from)
+  ) {
+    throw new Error(
+      `Broadcasts to #all are restricted. DM a station, use a purpose channel, or ask the operator to add "${from}" to WALKIE_TALKIE_WALL_ALLOWED.`,
+    );
+  }
   const message = routeMessage(from, to, content, ch, image);
   broadcast({
     type: "message",
@@ -493,6 +518,72 @@ const handleKickAll: RouteHandler = async (_req, res) => {
   }
   sendJson(res, 200, { ok: true, kicked: agents });
 };
+
+/**
+ * Callsigns allowed to issue wall announcements and broadcast into #all
+ * (WALKIE_TALKIE_WALL_ALLOWED, comma-separated). Empty/unset means no station may — the admin
+ * token alone can, which is what deploy.sh uses. The single value "*" allows every station:
+ * the operator's off switch for the whole restriction, and what the test harness defaults to
+ * so suites exercising broadcast mechanics are not also testing the gate.
+ */
+export function resolveWallAllowed(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const raw = env.WALKIE_TALKIE_WALL_ALLOWED ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+}
+
+/**
+ * wall(8): a broadcast announcement that is explicitly NOT from the operator.
+ *
+ * /admin-send was the wrong tool for restart warnings and the like: everything it sends renders
+ * and is treated as operator traffic, and SKILL.md instructs stations to EXECUTE operator
+ * messages with their full toolset — which is why every deploy warning had to carry a
+ * "NOT A TASK" disclaimer. A wall message arrives from the reserved identity "wall", names its
+ * issuer in the text (wall(1)'s "Broadcast message from ..."), and is informational by
+ * construction rather than by disclaimer.
+ *
+ * Authorization is either the admin token (host-side scripts; the token does not name its
+ * holder, so body.issuer may label it, defaulting to "hub") or the session token of a callsign
+ * on the allow-list — in which case the issuer IS the authenticated callsign, never spoofable.
+ *
+ * Not in a route table because it is the one route with two acceptable credentials; dispatched
+ * explicitly from handleRequest, which is the only scope that holds the admin token.
+ */
+async function handleWallRequest(req: IncomingMessage, res: ServerResponse, adminToken: string): Promise<void> {
+  const body = JSON.parse(await readBody(req)) as { content?: string; channel?: string; issuer?: string };
+  if (!body.content) {
+    return sendError(res, 400, "Missing 'content' field");
+  }
+
+  let issuer: string;
+  if (authenticateBearer(req, adminToken)) {
+    issuer = typeof body.issuer === "string" && body.issuer.trim() !== "" ? body.issuer.trim() : "hub";
+  } else {
+    const name = authenticateRequest(req);
+    if (!name) {
+      return sendError(res, 401, "Wall requires the admin token or a registered station's token");
+    }
+    const allowed = resolveWallAllowed();
+    if (!allowed.has("*") && !allowed.has(name)) {
+      return sendError(res, 403, `Station "${name}" is not authorized to wall`);
+    }
+    issuer = name;
+  }
+
+  const channel = body.channel || "#all";
+  try {
+    const message = sendStationMessage("wall", "@all", `[WALL from ${issuer}] ${body.content}`, channel);
+    const recipients = takeLastRecipientCount();
+    console.log(`[wall] ${issuer} (${channel}): ${body.content}`);
+    sendJson(res, 200, { id: message.id, recipients });
+  } catch (e) {
+    sendError(res, 404, (e as Error).message);
+  }
+}
 
 const handleAdminSend: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as {
@@ -1195,6 +1286,15 @@ export function createHubServer(
         console.error(`[mcp] request failed: ${(e as Error).message}`);
         if (!res.headersSent) sendError(res, 500, (e as Error).message);
         else res.end();
+      });
+      return;
+    }
+
+    // Wall announcements: the one route with two acceptable credentials (admin token or an
+    // allow-listed station's token), so it cannot live in a single-auth route table.
+    if (path === "/wall" && req.method === "POST") {
+      handleWallRequest(req, res, adminToken).catch((e) => {
+        sendError(res, 500, (e as Error).message);
       });
       return;
     }
