@@ -40,6 +40,7 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { launchAgent } from "./launcher.js";
+import { createMcpEndpoint } from "./mcp.js";
 import {
   addPoll,
   getLastSeen,
@@ -53,7 +54,7 @@ import {
   setOnline,
 } from "./polling.js";
 import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
-import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
+import type { Message, MessageImage, RegisterRequest, RouteHandler, SendRequest, UserRole } from "./types.js";
 import { getBuildInfo } from "./version.js";
 
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
@@ -86,10 +87,22 @@ function sendError(res: ServerResponse, status: number, message: string): void {
   sendJson(res, status, { error: message });
 }
 
-const handleRegister: RouteHandler = async (req, res) => {
-  const body = JSON.parse(await readBody(req)) as RegisterRequest;
-  if (!body.name || typeof body.name !== "string") {
-    return sendError(res, 400, "Missing or invalid 'name' field");
+export type RegisterOutcome =
+  | { ok: true; token: string; name: string; reclaimed: boolean }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Claim (or reclaim) a callsign. THE registration policy, shared by POST /register and by a
+ * hub-hosted MCP session's radio_join.
+ *
+ * Extracted from the route handler rather than duplicated because the policy here is not one
+ * rule but six that have each been added for a reason — reserved names, proof-of-ownership
+ * reclaim, grace-timer cancellation, #all auto-join, channel auto-rejoin, bridge notification.
+ * A second copy for the MCP path would have drifted from this one on the first fix to either.
+ */
+export function registerStation(name: string, role: UserRole = "agent", oldToken?: string): RegisterOutcome {
+  if (!name || typeof name !== "string") {
+    return { ok: false, status: 400, error: "Missing or invalid 'name' field" };
   }
   // "operator" is the dashboard's identity, and it is created lazily by handleAdminSend on the
   // first admin message rather than seeded at boot. Registrations live only in memory, so every
@@ -102,76 +115,112 @@ const handleRegister: RouteHandler = async (req, res) => {
   // remedy. Reserving it closes the window without needing per-identity auth, which the join
   // token does not provide. Nothing legitimate registers it this way: the dashboard never calls
   // /register, and handleAdminSend calls registerUser() directly.
-  if (isReservedName(body.name)) {
-    return sendError(res, 403, `"${body.name}" is a reserved name and cannot be registered`);
+  if (isReservedName(name)) {
+    return { ok: false, status: 403, error: `"${name}" is a reserved name and cannot be registered` };
   }
   try {
     // Whether this call took over a registration that was still held. Reported back so the
     // client does not have to infer it: comparing the old and new tokens looks equivalent but
     // is not, because a fresh register also mints a new token — a station whose name had
     // already been reaped would then be told it reclaimed something when it started clean.
-    const reclaimed = isUserRegistered(body.name);
+    const reclaimed = isUserRegistered(name);
     // Allow reconnection only if the caller proves ownership with the old token
-    if (isUserRegistered(body.name)) {
-      const existingToken = getUserToken(body.name);
-      if (!body.oldToken || body.oldToken !== existingToken) {
-        return sendError(res, 409, `User "${body.name}" is already registered`);
+    if (isUserRegistered(name)) {
+      const existingToken = getUserToken(name);
+      if (!oldToken || oldToken !== existingToken) {
+        return { ok: false, status: 409, error: `User "${name}" is already registered` };
       }
-      removePoll(body.name);
-      removeQueue(body.name);
-      unregisterUser(body.name);
+      removePoll(name);
+      removeQueue(name);
+      unregisterUser(name);
     }
     // Cancel grace timer if reconnecting
-    const graceTimer = staleTimers.get(body.name);
+    const graceTimer = staleTimers.get(name);
     if (graceTimer) {
       clearTimeout(graceTimer);
-      staleTimers.delete(body.name);
+      staleTimers.delete(name);
     }
-    const role = body.role === "bridge" ? "bridge" : "agent";
-    const user = registerUser(body.name, role);
-    ensureQueue(body.name);
-    setOnline(body.name);
+    const user = registerUser(name, role);
+    ensureQueue(name);
+    setOnline(name);
     // Auto-join #all
     try {
-      joinChannel("#all", body.name);
+      joinChannel("#all", name);
     } catch {
       /* already joined or channel issue */
     }
     // Restore previous channel memberships from DB
-    const previousChannels = dbGetUserChannels(body.name);
+    const previousChannels = dbGetUserChannels(name);
     for (const ch of previousChannels) {
       if (ch === "#all") continue;
       try {
-        joinChannel(ch, body.name);
-        broadcast({ type: "channel_join", channel: ch, userName: body.name, timestamp: Date.now() });
-        console.log(`[auto-rejoin] ${body.name} -> ${ch}`);
+        joinChannel(ch, name);
+        broadcast({ type: "channel_join", channel: ch, userName: name, timestamp: Date.now() });
+        console.log(`[auto-rejoin] ${name} -> ${ch}`);
       } catch {
         /* channel may no longer exist */
       }
     }
-    broadcast({ type: "join", name: body.name, timestamp: Date.now() });
-    console.log(`[register] ${body.name}`);
+    broadcast({ type: "join", name, timestamp: Date.now() });
+    console.log(`[register] ${name}`);
 
     if (role === "agent") {
-      notifyBridges(`USER_JOINED: ${body.name}`);
+      notifyBridges(`USER_JOINED: ${name}`);
     } else if (role === "bridge") {
       // Send current agent list to the newly connected bridge (even if empty)
-      const agents = getRegisteredUsers().filter((n) => n !== body.name && getUserRole(n) === "agent");
-      enqueueAndDeliver(body.name, {
+      const agents = getRegisteredUsers().filter((n) => n !== name && getUserRole(n) === "agent");
+      enqueueAndDeliver(name, {
         id: randomUUID(),
         from: "system",
-        to: body.name,
+        to: name,
         content: agents.length > 0 ? `CONNECTED_USERS: ${agents.join(", ")}` : "CONNECTED_USERS: (none)",
         channel: "#all",
         timestamp: Date.now(),
       });
     }
 
-    sendJson(res, 200, { token: user.token, name: user.name, reclaimed });
+    return { ok: true, token: user.token, name: user.name, reclaimed };
   } catch (e) {
-    sendError(res, 409, (e as Error).message);
+    return { ok: false, status: 409, error: (e as Error).message };
   }
+}
+
+const handleRegister: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as RegisterRequest;
+  const outcome = registerStation(body.name, body.role === "bridge" ? "bridge" : "agent", body.oldToken);
+  if (!outcome.ok) {
+    return sendError(res, outcome.status, outcome.error);
+  }
+  sendJson(res, 200, { token: outcome.token, name: outcome.name, reclaimed: outcome.reclaimed });
 };
+
+/**
+ * Route one station-authored message and mirror it to the dashboard. Shared by POST /send and
+ * by a hub-hosted MCP session's radio_over / radio_send_image, so both go through the same
+ * channel-existence check, the same broadcast, and the same log line. Throws on an unroutable
+ * message (unknown channel, unknown or non-member recipient).
+ */
+export function sendStationMessage(
+  from: string,
+  to: string,
+  content: string,
+  channel?: string,
+  image?: MessageImage,
+): Message {
+  const ch = channel || "#all";
+  const message = routeMessage(from, to, content, ch, image);
+  broadcast({
+    type: "message",
+    from: message.from,
+    to: message.to,
+    content: message.content,
+    channel: message.channel,
+    timestamp: message.timestamp,
+    image: message.image,
+  });
+  console.log(`[send] ${from} -> ${to} (${ch}): ${content}${image ? " [+image]" : ""}`);
+  return message;
+}
 
 const handleSend: RouteHandler = async (req, res, userName) => {
   const body = JSON.parse(await readBody(req)) as SendRequest;
@@ -186,20 +235,8 @@ const handleSend: RouteHandler = async (req, res, userName) => {
     console.log(`[typing] ${userName}`);
     return sendJson(res, 200, { id: "typing", to: body.to });
   }
-  const content = body.content || "";
-  const channel = body.channel || "#all";
   try {
-    const message = routeMessage(userName!, body.to, content, channel, body.image);
-    broadcast({
-      type: "message",
-      from: message.from,
-      to: message.to,
-      content: message.content,
-      channel: message.channel,
-      timestamp: message.timestamp,
-      image: message.image,
-    });
-    console.log(`[send] ${userName} -> ${body.to} (${channel}): ${content}${body.image ? " [+image]" : ""}`);
+    const message = sendStationMessage(userName!, body.to, body.content || "", body.channel, body.image);
     sendJson(res, 200, { id: message.id, to: message.to });
   } catch (e) {
     sendError(res, 404, (e as Error).message);
@@ -750,8 +787,17 @@ export function createHubServer(
 ): import("node:http").Server {
   const staleGraceMs = resolveStaleGraceMs();
 
-  // When a poll connection drops unexpectedly, mark user offline and start grace timer
-  onPollDisconnect((userName) => {
+  /**
+   * The single "this station's transport went away" policy: mark offline, tell the dashboard,
+   * and arm the stale-registration grace.
+   *
+   * Two things reach it, and only two. An HTTP long-poll socket dropping (below), and a
+   * hub-hosted MCP SESSION ending — a DELETE /mcp, a transport close, or the idle sweeper.
+   * What deliberately does NOT reach it is a cancelled MCP tool call: a station abandoning one
+   * radio_standby is not a station that died, and conflating the two is the exact mistake that
+   * once auto-unregistered the whole fleet mid-work.
+   */
+  function markStationOffline(userName: string): void {
     if (!isUserRegistered(userName)) return;
     setOffline(userName);
     broadcast({ type: "status", name: userName, online: false, timestamp: Date.now() });
@@ -787,6 +833,16 @@ export function createHubServer(
         }
       }, staleGraceMs),
     );
+  }
+
+  // When a poll connection drops unexpectedly, mark user offline and start grace timer
+  onPollDisconnect(markStationOffline);
+
+  const handleMcpRequest = createMcpEndpoint({
+    registerStation,
+    sendStationMessage,
+    markStationOffline,
+    joinToken,
   });
 
   function handleRequest(req: IncomingMessage, res: ServerResponse): void {
@@ -805,6 +861,27 @@ export function createHubServer(
     }
     if (path === "/events" && req.method === "GET") {
       addSSEClient(res);
+      return;
+    }
+
+    // Hub-hosted MCP over Streamable HTTP. Mounted here rather than in one of the four route
+    // tables because each of those is one method plus one auth mode, and /mcp needs POST (the
+    // JSON-RPC channel), GET (the standalone SSE stream) and DELETE (session teardown) under
+    // the join token. Same port as everything else, deliberately: a second listener would mean
+    // new firewall and proxy configuration for every deployment.
+    //
+    // The body is NOT pre-read — the transport parses the request itself, and handing it a
+    // consumed stream is the classic way to make an MCP endpoint hang on its first POST.
+    if (path === "/mcp") {
+      if (!authenticateBearer(req, joinToken)) {
+        sendError(res, 401, "Join token required");
+        return;
+      }
+      handleMcpRequest(req, res).catch((e) => {
+        console.error(`[mcp] request failed: ${(e as Error).message}`);
+        if (!res.headersSent) sendError(res, 500, (e as Error).message);
+        else res.end();
+      });
       return;
     }
 

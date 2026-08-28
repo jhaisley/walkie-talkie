@@ -5,6 +5,7 @@ import { initGeneralChannel } from "./channels.js";
 import { initDB } from "./db.js";
 import { closeAllSSEClients } from "./events.js";
 import { autoLaunchAgents } from "./launcher.js";
+import { closeAllMcpSessions } from "./mcp.js";
 import { closeAllPolls } from "./polling.js";
 import { enqueueAndDeliver, ensureQueue } from "./router.js";
 import { createHubServer } from "./server.js";
@@ -61,6 +62,12 @@ function handleShutdown(): void {
   }
   closeAllSSEClients();
   closeAllPolls();
+  // Hub-hosted MCP stations do not hold a poll socket, so closeAllPolls does not reach them.
+  // Their transports have to be closed explicitly or an in-flight radio_standby hangs until the
+  // station's own tool-call timeout. Deliberately not awaited: it defers briefly so the
+  // RADIO_KILLED enqueued above can finish being written to each session's SSE stream first,
+  // and server.close() below is already waiting on those same connections.
+  void closeAllMcpSessions();
   server.close(() => {
     console.log("[shutdown] Hub stopped.");
     process.exit(0);
