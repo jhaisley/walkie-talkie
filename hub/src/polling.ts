@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dbGetDeliveriesAfter } from "./db.js";
 import { drainQueue } from "./router.js";
-import type { PendingPoll } from "./types.js";
+import type { Message, PendingPoll, PollSink } from "./types.js";
 
 const DEFAULT_POLL_TIMEOUT_MS = 25_000; // 25 seconds
 
@@ -28,6 +28,22 @@ const DEFAULT_POLL_TIMEOUT_MS = 25_000; // 25 seconds
  * Configurable via WALKIE_TALKIE_POLL_TIMEOUT_MS (milliseconds). Raise it only
  * alongside the MCP client timeout, and keep the gap wide enough to cover
  * request latency. Non-numeric or non-positive values fall back to the default.
+ *
+ * NONE OF THIS APPLIES to a station whose radio is hosted by the hub (POST /mcp). There is no
+ * client->hub long-poll socket there at all: radio_standby resolves in-process via awaitPoll(),
+ * so no client-side abort can reach req.on("close") and the three-term ordering collapses to
+ * two — the wait window only has to stay under the station's MCP tool-call timeout.
+ *
+ * That path has its OWN ordering invariant, in the same family and with the same failure mode:
+ *
+ *     WALKIE_TALKIE_MCP_SESSION_IDLE_MS  >  the longest standby window a station may request
+ *
+ * The idle sweeper in hub/src/mcp.ts closes MCP sessions that have gone quiet, and closing a
+ * session marks its station offline and arms the stale grace. During a legitimate 20-minute
+ * standby a session has exactly ONE in-flight request and ZERO new activity, so a sweeper that
+ * looked only at "time since last request" would reap precisely the stations behaving best.
+ * The in-flight counter is the real guard; the idle window is the belt to its braces. If you
+ * raise resolveMaxPollWindowMs below, raise the MCP idle window with it.
  */
 export function resolvePollTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.WALKIE_TALKIE_POLL_TIMEOUT_MS;
@@ -117,20 +133,29 @@ export function hasActivePoll(userName: string): boolean {
   return pendingPolls.has(userName);
 }
 
+/** A sink that writes the poll result to an HTTP response — the original, only behaviour. */
+function httpSink(res: ServerResponse): PollSink {
+  return {
+    deliver(messages, cursor) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(cursor === undefined ? { messages } : { messages, cursor }));
+    },
+    empty() {
+      res.writeHead(204);
+      res.end();
+    },
+    ended: () => res.writableEnded,
+  };
+}
+
 /**
- * Register a long-poll for `userName`. When `cursor` is a number, the poll is resolved in
- * serve-by-cursor (at-least-once) mode: messages are read from the persisted delivery log
- * after that cursor and are NOT removed, so a lost/unparsed 200 recovers on the next poll
- * with the same cursor. When `cursor` is undefined, the legacy drain path (at-most-once) is
- * used unchanged, so any client that doesn't send a cursor keeps its prior behavior.
+ * Shared body of addPoll and awaitPoll: register the pending poll, arm its window, and serve
+ * anything already waiting so the caller doesn't sit through a window for a message that has
+ * already arrived.
+ *
+ * Returns true if the poll was settled immediately (nothing is left in pendingPolls).
  */
-export function addPoll(
-  userName: string,
-  req: IncomingMessage,
-  res: ServerResponse,
-  cursor?: number,
-  windowMs: number = POLL_TIMEOUT_MS,
-): void {
+function startPoll(userName: string, sink: PollSink, cursor: number | undefined, windowMs: number): boolean {
   removePoll(userName);
   lastSeen.set(userName, Date.now());
 
@@ -139,22 +164,10 @@ export function addPoll(
   const timer = setTimeout(() => {
     pendingPolls.delete(userName);
     console.log(`[poll-timeout] ${userName} (no messages after ${windowMs / 1000}s)`);
-    res.writeHead(204);
-    res.end();
+    sink.empty();
   }, windowMs);
 
-  pendingPolls.set(userName, { userName, res, timer, cursor });
-
-  // Detect unexpected connection drop (agent crash, network loss).
-  // Listen on req (not res) — more reliable when no response has been written yet.
-  req.on("close", () => {
-    if (!res.writableEnded && pendingPolls.has(userName)) {
-      console.log(`[poll-disconnect] ${userName} connection dropped`);
-      clearTimeout(timer);
-      pendingPolls.delete(userName);
-      onDisconnectCallback?.(userName);
-    }
-  });
+  pendingPolls.set(userName, { userName, sink, timer, cursor });
 
   // Immediate check: deliver anything already available so the client doesn't wait.
   if (cursor !== undefined) {
@@ -164,10 +177,10 @@ export function addPoll(
       pendingPolls.delete(userName);
       drainQueue(userName); // discard the parallel in-memory queue; the log is authoritative
       console.log(`[poll-immediate] ${userName} <- ${messages.length} message(s) (cursor ${cursor}->${newCursor})`);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ messages, cursor: newCursor }));
+      sink.deliver(messages, newCursor);
+      return true;
     }
-    return;
+    return false;
   }
 
   // Legacy at-most-once: drain the in-memory queue.
@@ -176,9 +189,105 @@ export function addPoll(
     clearTimeout(timer);
     pendingPolls.delete(userName);
     console.log(`[poll-immediate] ${userName} <- ${messages.length} queued message(s)`);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ messages }));
+    sink.deliver(messages);
+    return true;
   }
+  return false;
+}
+
+/**
+ * Register a long-poll for `userName`. When `cursor` is a number, the poll is resolved in
+ * serve-by-cursor (at-least-once) mode: messages are read from the persisted delivery log
+ * after that cursor and are NOT removed, so a lost/unparsed 200 recovers on the next poll
+ * with the same cursor. When `cursor` is undefined, the legacy drain path (at-most-once) is
+ * used unchanged, so any client that doesn't send a cursor keeps its prior behavior.
+ *
+ * Signature and observable behaviour are deliberately unchanged by the sink refactor: this is
+ * the delivery path every currently-deployed station uses, and poll-timeout / poll-window /
+ * poll-cursor / stale-grace are the guard that it stayed that way.
+ */
+export function addPoll(
+  userName: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  cursor?: number,
+  windowMs: number = POLL_TIMEOUT_MS,
+): void {
+  const sink = httpSink(res);
+  // Detect unexpected connection drop (agent crash, network loss).
+  // Listen on req (not res) — more reliable when no response has been written yet.
+  //
+  // This is the ONLY path that fires onDisconnectCallback. awaitPoll's cancellation path
+  // deliberately does not: a cancelled MCP tool call is a station changing its mind, and the
+  // HTTP path's inability to tell that apart from a crash is what reaped the fleet once.
+  req.on("close", () => {
+    const poll = pendingPolls.get(userName);
+    // Sink identity, not just presence: a close arriving after this poll was already replaced
+    // by a newer one for the same callsign must not tear the NEWER one down.
+    if (!res.writableEnded && poll?.sink === sink) {
+      console.log(`[poll-disconnect] ${userName} connection dropped`);
+      clearTimeout(poll.timer);
+      pendingPolls.delete(userName);
+      onDisconnectCallback?.(userName);
+    }
+  });
+
+  startPoll(userName, sink, cursor, windowMs);
+}
+
+/**
+ * The in-process twin of addPoll, for a station whose radio is hosted by the hub.
+ *
+ * Resolves with the messages when any are routed, or null when the window elapses or the tool
+ * call is cancelled. Registering in the SAME pendingPolls map is the point: deliverMessage(),
+ * hasActivePoll(), removePoll() and closeAllPolls() then treat a remote station exactly like
+ * an HTTP one, so /users liveness, kick and shutdown all keep working with no special case.
+ *
+ * Cancellation (`signal`) removes the poll and resolves null. It must NEVER reach
+ * onDisconnectCallback — see addPoll above.
+ */
+export function awaitPoll(
+  userName: string,
+  cursor: number | undefined,
+  windowMs: number,
+  signal?: AbortSignal,
+): Promise<{ messages: Message[]; cursor?: number } | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let abortListener: (() => void) | undefined;
+
+    const settle = (value: { messages: Message[]; cursor?: number } | null): void => {
+      if (settled) return;
+      settled = true;
+      if (abortListener) signal?.removeEventListener("abort", abortListener);
+      resolve(value);
+    };
+
+    const sink: PollSink = {
+      deliver: (messages, newCursor) => settle({ messages, cursor: newCursor }),
+      empty: () => settle(null),
+      ended: () => settled,
+    };
+
+    if (signal?.aborted) {
+      settle(null);
+      return;
+    }
+
+    abortListener = () => {
+      if (settled) return;
+      console.log(`[poll-cancel] ${userName} standby cancelled by the station`);
+      // Only tear down if the map still holds OUR poll: a station that started a fresh standby
+      // under the same callsign has already replaced it, and killing that would be a bug.
+      // removePoll ends the sink (resolving null) and clears the timer. No offline marking and
+      // no stale grace — this is not a station that died.
+      if (pendingPolls.get(userName)?.sink === sink) removePoll(userName);
+      settle(null);
+    };
+    signal?.addEventListener("abort", abortListener, { once: true });
+
+    startPoll(userName, sink, cursor, windowMs);
+  });
 }
 
 export function deliverMessage(userName: string): void {
@@ -195,8 +304,7 @@ export function deliverMessage(userName: string): void {
     drainQueue(userName); // discard the parallel in-memory queue; the log is authoritative
     console.log(`[poll-deliver] ${userName} <- ${messages.length} message(s) (cursor ${poll.cursor}->${newCursor})`);
 
-    poll.res.writeHead(200, { "Content-Type": "application/json" });
-    poll.res.end(JSON.stringify({ messages, cursor: newCursor }));
+    poll.sink.deliver(messages, newCursor);
     return;
   }
 
@@ -214,17 +322,13 @@ export function deliverMessage(userName: string): void {
   }
   console.log(`[poll-deliver] ${userName} <- ${messages.length} message(s)`);
 
-  poll.res.writeHead(200, { "Content-Type": "application/json" });
-  poll.res.end(JSON.stringify({ messages }));
+  poll.sink.deliver(messages);
 }
 
 export function closeAllPolls(): void {
   for (const [, poll] of pendingPolls) {
     clearTimeout(poll.timer);
-    if (!poll.res.writableEnded) {
-      poll.res.writeHead(204);
-      poll.res.end();
-    }
+    if (!poll.sink.ended()) poll.sink.empty();
   }
   pendingPolls.clear();
 }
@@ -234,9 +338,6 @@ export function removePoll(userName: string): void {
   if (poll) {
     clearTimeout(poll.timer);
     pendingPolls.delete(userName);
-    if (!poll.res.writableEnded) {
-      poll.res.writeHead(204);
-      poll.res.end();
-    }
+    if (!poll.sink.ended()) poll.sink.empty();
   }
 }

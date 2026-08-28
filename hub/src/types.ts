@@ -73,9 +73,29 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * Where a resolved long-poll's result goes.
+ *
+ * Introduced so an in-process waiter (a hub-hosted MCP session's radio_standby) can live in the
+ * SAME pendingPolls map as an HTTP long-poll. That shared map is load-bearing: hasActivePoll()
+ * feeds GET /users and the dashboard's liveness column, and removePoll() is what kick,
+ * unregister and re-register use to end a poll. A parallel registry for remote stations would
+ * have shown every one of them as "not listening" on the dashboard and left them unkickable.
+ *
+ * `ended()` replaces the old `res.writableEnded` guard: a promise sink is "ended" once settled.
+ */
+export type PollSink = {
+  /** Hand the poll its result. Called at most once. */
+  deliver(messages: Message[], cursor?: number): void;
+  /** End the poll with no messages — the 204 equivalent (timeout, kick, shutdown, cancel). */
+  empty(): void;
+  /** True once this sink has been settled and must not be written to again. */
+  ended(): boolean;
+};
+
 export type PendingPoll = {
   userName: string;
-  res: ServerResponse;
+  sink: PollSink;
   timer: ReturnType<typeof setTimeout>;
   /**
    * Delivery cursor for serve-by-cursor (at-least-once) polls. When set, the poll is
