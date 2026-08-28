@@ -39,7 +39,6 @@ import {
 } from "./db.js";
 import { addSSEClient, broadcast } from "./events.js";
 import { launchAgent } from "./launcher.js";
-import { getBuildInfo } from "./version.js";
 import {
   addPoll,
   getLastSeen,
@@ -52,6 +51,7 @@ import {
 } from "./polling.js";
 import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest } from "./types.js";
+import { getBuildInfo } from "./version.js";
 
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 

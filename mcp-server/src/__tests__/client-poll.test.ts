@@ -1,5 +1,5 @@
-import { describe, expect, it, afterEach } from "vitest";
 import http from "node:http";
+import { afterEach, describe, expect, it } from "vitest";
 import { HubClient } from "../client.js";
 
 /**
