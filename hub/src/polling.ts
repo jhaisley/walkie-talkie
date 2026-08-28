@@ -2,7 +2,41 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { drainQueue } from "./router.js";
 import type { PendingPoll } from "./types.js";
 
-const POLL_TIMEOUT_MS = 3_600_000; // 1 hour
+const DEFAULT_POLL_TIMEOUT_MS = 25_000; // 25 seconds
+
+/**
+ * How long the hub holds an empty /poll open before answering 204.
+ *
+ * ORDERING CONSTRAINT: this MUST stay strictly below the MCP client's poll
+ * timeout (mcp-server/src/client.ts, `timeoutMs = 30_000`). The hub has to be
+ * the one that ends an idle poll, not the client.
+ *
+ * If the client aborts first, its abort closes the socket while the poll is
+ * still pending. That fires req.on("close") in addPoll(), which takes the
+ * disconnect branch (res not ended, poll still in pendingPolls) and calls
+ * onPollDisconnect -> the hub marks the station offline and arms the
+ * STALE_GRACE_MS auto-unregister timer. Every idle standby then looked like a
+ * crashed agent: with the old 1 hour default, all stations cycled
+ * "[offline] <name> (grace period 30s)" and got auto-unregistered mid-work.
+ *
+ * When the hub answers first, the timeout path deletes the entry from
+ * pendingPolls and ends the response, so the subsequent close is a no-op --
+ * the guard `!res.writableEnded && pendingPolls.has(userName)` is false on both
+ * counts. No disconnect callback, no grace timer.
+ *
+ * Configurable via WALKIE_TALKIE_POLL_TIMEOUT_MS (milliseconds). Raise it only
+ * alongside the MCP client timeout, and keep the gap wide enough to cover
+ * request latency. Non-numeric or non-positive values fall back to the default.
+ */
+export function resolvePollTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.WALKIE_TALKIE_POLL_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_POLL_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_POLL_TIMEOUT_MS;
+  return n;
+}
+
+const POLL_TIMEOUT_MS = resolvePollTimeoutMs();
 const pendingPolls = new Map<string, PendingPoll>();
 
 // Track users explicitly detected as offline (poll connection dropped).

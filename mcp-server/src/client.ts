@@ -133,10 +133,14 @@ export class HubClient {
    * Bounded long-poll for radio_standby. timeoutMs MUST stay well under the MCP
    * client's tool-call timeout: this runs as an MCP tool, and if the call blocks
    * longer than that timeout the whole MCP server is dropped as unresponsive
-   * ("No such tool available"). The hub holds /poll open for up to an hour, so a
-   * too-long value here meant radio_standby could hang ~an hour and take the MCP
-   * connection down with it. 30s matches the tool's documented "blocks up to 30
-   * seconds" and stays under the default 60s MCP timeout.
+   * ("No such tool available"). 30s matches the tool's documented "blocks up to
+   * 30 seconds" and stays under the default 60s MCP timeout.
+   *
+   * It is also the ceiling for the hub's own idle-poll timeout, which MUST stay
+   * strictly below this value (see resolvePollTimeoutMs in hub/src/polling.ts).
+   * Whichever side ends an idle poll first decides how it reads: hub-first is a
+   * clean 204, client-first is a socket abort the hub scores as a crashed agent.
+   * If you raise this, raise the hub's timeout to match -- never the reverse.
    *
    * A timeout with no message is the NORMAL "no messages" outcome, not an error,
    * so we resolve it to null (radio_standby then reports "no new messages")
