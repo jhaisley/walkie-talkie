@@ -6,6 +6,21 @@
   "bin": {
     "walkie-talkie-mcp": "./dist/index.js"
   },
+  "//exports": "The hub imports registerRadioTools + RadioDeps to host the same tools over Streamable HTTP, so those two modules are the package's public surface. Node16 resolution needs an explicit map once `exports` exists; everything not listed here stays private on purpose.",
+  "exports": {
+    ".": {
+      "types": "./dist/tools.d.ts",
+      "default": "./dist/tools.js"
+    },
+    "./tools.js": {
+      "types": "./dist/tools.d.ts",
+      "default": "./dist/tools.js"
+    },
+    "./radio-deps.js": {
+      "types": "./dist/radio-deps.d.ts",
+      "default": "./dist/radio-deps.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -13,7 +28,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0"
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
