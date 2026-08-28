@@ -45,14 +45,12 @@ describe("POST /kick-all", () => {
   it("should kick all agents but exclude operator", async () => {
     await registerUser(ctx, "ka-agent1");
     await registerUser(ctx, "ka-agent2");
-    // Register operator
-    await fetch(`${ctx.baseUrl}/register`, {
+    // Bring "operator" into existence the way production does: /register now refuses the
+    // reserved name, and handleAdminSend auto-registers the sender on the first admin message.
+    await fetch(`${ctx.baseUrl}/admin-send`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ctx.joinToken}`,
-      },
-      body: JSON.stringify({ name: "operator" }),
+      headers: adminHeaders(),
+      body: JSON.stringify({ to: "@all", content: "seed operator" }),
     });
 
     const res = await fetch(`${ctx.baseUrl}/kick-all`, {

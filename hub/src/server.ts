@@ -57,6 +57,16 @@ import { getBuildInfo } from "./version.js";
 
 const AGENT_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
+/**
+ * Callsigns a client may not claim through /register. Compared case-insensitively: the dashboard
+ * matches `from === "operator"` exactly, so a differently-cased variant would not inherit the
+ * styling, but it would still be a confusing impersonation and nothing legitimate needs it.
+ */
+const RESERVED_NAMES = new Set(["operator"]);
+export function isReservedName(name: string): boolean {
+  return RESERVED_NAMES.has(name.trim().toLowerCase());
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -79,6 +89,20 @@ const handleRegister: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as RegisterRequest;
   if (!body.name || typeof body.name !== "string") {
     return sendError(res, 400, "Missing or invalid 'name' field");
+  }
+  // "operator" is the dashboard's identity, and it is created lazily by handleAdminSend on the
+  // first admin message rather than seeded at boot. Registrations live only in memory, so every
+  // hub restart leaves the name unclaimed until someone sends from the dashboard — and in that
+  // window any holder of the join token could take it via /register.
+  //
+  // That matters more than an ordinary name collision: the dashboard renders anything `from`
+  // "operator" with operator styling, agents are instructed to execute operator messages as
+  // tasks, and /kick-all deliberately skips the name, so a squatter is immune to the bulk
+  // remedy. Reserving it closes the window without needing per-identity auth, which the join
+  // token does not provide. Nothing legitimate registers it this way: the dashboard never calls
+  // /register, and handleAdminSend calls registerUser() directly.
+  if (isReservedName(body.name)) {
+    return sendError(res, 403, `"${body.name}" is a reserved name and cannot be registered`);
   }
   try {
     // Allow reconnection only if the caller proves ownership with the old token
