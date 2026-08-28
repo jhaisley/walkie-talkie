@@ -221,6 +221,38 @@ function parseMessageRow(row: Record<string, unknown>): Message {
  * full message into the row so the delivery is self-contained — it survives the messages
  * table being pruned out from under it.
  */
+/**
+ * Per-recipient retention for the delivery log. The log is otherwise INSERT-only: one row per
+ * (recipient, message), each carrying a full snapshot of the message. On a fleet, a single #all
+ * broadcast writes one row per member and none of them are ever removed, so the table grows
+ * without bound for as long as the hub runs — unlike `messages`, which the #all cap prunes.
+ *
+ * Keeping the newest N per recipient bounds it while leaving at-least-once intact for any client
+ * whose cursor is inside the window. A client further behind than N messages has already lost its
+ * registration to the stale reaper long before, so the guarantee it would be owed is moot.
+ * Configurable via WALKIE_TALKIE_DELIVERY_RETENTION; invalid/absent falls back to the default.
+ */
+const DEFAULT_DELIVERY_RETENTION = 2000;
+function deliveryRetention(): number {
+  const raw = process.env.WALKIE_TALKIE_DELIVERY_RETENTION;
+  const n = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DELIVERY_RETENTION;
+}
+
+/** Trim `recipient`'s delivery log to the newest `deliveryRetention()` rows. */
+function dbPruneDeliveries(recipient: string): void {
+  const max = deliveryRetention();
+  const count = (
+    db.prepare("SELECT COUNT(*) AS cnt FROM deliveries WHERE recipient = ?").get(recipient) as { cnt: number }
+  ).cnt;
+  if (count <= max) return;
+  db.prepare(
+    `DELETE FROM deliveries WHERE recipient = ? AND id NOT IN (
+       SELECT id FROM deliveries WHERE recipient = ? ORDER BY id DESC LIMIT ?
+     )`,
+  ).run(recipient, recipient, max);
+}
+
 export function dbRecordDelivery(recipient: string, message: Message): void {
   db.prepare("INSERT INTO deliveries (recipient, message_id, created_at, message_json) VALUES (?, ?, ?, ?)").run(
     recipient,
@@ -228,6 +260,7 @@ export function dbRecordDelivery(recipient: string, message: Message): void {
     Date.now(),
     JSON.stringify(message),
   );
+  dbPruneDeliveries(recipient);
 }
 
 /**
