@@ -30376,7 +30376,7 @@ function clearStoredToken(hubUrl2, name, env = process.env) {
 
 // mcp-server/src/version.ts
 function clientBuild() {
-  return true ? "1.7.0+3d8a1d1-dirty" : "source";
+  return true ? "1.7.0+7d358a6-dirty" : "source";
 }
 
 // mcp-server/src/helpers.ts
@@ -30387,7 +30387,7 @@ function resolveWaitScript(thisDir, exists = fs2.existsSync) {
     path2.resolve(thisDir, "..", "bin", "radio-wait.sh"),
     path2.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
   ];
-  return candidates.find(exists) ?? candidates[0];
+  return candidates.find(exists) ?? null;
 }
 function formatConnectedUsers(users) {
   if (users.length === 0) return "No users connected.";
@@ -30847,7 +30847,7 @@ ${channelText}`
   );
   server2.tool(
     "radio_token",
-    "Get the current session token, hub URL, and path to radio-wait.sh script. Use this to run the wait script in a terminal for real-time polling.",
+    "Get the current session token and hub URL, plus the path to the shell listener script if this station has one installed. The token and hubUrl are all a listener actually needs \u2014 it is an HTTP client, not an MCP one. waitScript is null when no script is installed, which is the normal case: no installer currently ships one. The listener design also requires a host that wakes the agent when a background task completes; on a strictly turn-based CLI it would detect a message with no way to report it.",
     {},
     async () => {
       if (!currentToken) {

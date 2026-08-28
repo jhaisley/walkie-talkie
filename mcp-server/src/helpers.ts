@@ -16,12 +16,16 @@ import path from "node:path";
  *
  * `exists` is injectable for testing; it defaults to `fs.existsSync`.
  */
-export function resolveWaitScript(thisDir: string, exists: (p: string) => boolean = fs.existsSync): string {
+export function resolveWaitScript(thisDir: string, exists: (p: string) => boolean = fs.existsSync): string | null {
   const candidates = [
     path.resolve(thisDir, "..", "bin", "radio-wait.sh"),
     path.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh"),
   ];
-  return candidates.find(exists) ?? candidates[0];
+  // Returns null rather than a plausible-looking guess. The previous fallback to candidates[0]
+  // meant a station that had never been shipped the script still received a confident absolute
+  // path to it — and no installer ships it, so that was EVERY installed station. Probing the
+  // right locations cannot help when the file is at none of them; the honest answer is "absent".
+  return candidates.find(exists) ?? null;
 }
 
 /**
