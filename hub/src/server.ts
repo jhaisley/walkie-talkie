@@ -6,8 +6,12 @@ import {
   getRegisteredUsers,
   getUser,
   getUserRole,
+  getUserToken,
+  isUnclaimed,
   isUserRegistered,
+  markClaimed,
   registerUser,
+  touchSeen,
   unregisterUser,
 } from "./auth.js";
 import {
@@ -62,7 +66,15 @@ import {
   setOffline,
   setOnline,
 } from "./polling.js";
-import { drainQueue, enqueueAndDeliver, ensureQueue, notifyBridges, removeQueue, routeMessage } from "./router.js";
+import {
+  drainQueue,
+  enqueueAndDeliver,
+  ensureQueue,
+  notifyBridges,
+  removeQueue,
+  routeMessage,
+  takeLastRecipientCount,
+} from "./router.js";
 import type { RegisterRequest, RouteHandler, SendRequest, UserRole } from "./types.js";
 import { getBuildInfo } from "./version.js";
 
@@ -178,15 +190,34 @@ const handleRegister: RouteHandler = async (req, res) => {
     const reclaimed = isUserRegistered(name);
     if (reclaimed) {
       const incumbent = getUser(name);
-      // Two independent proofs of ownership. The key is the strong one: it survives the client
-      // restarting, the hub restarting, and the station losing its token file, so a key holder
-      // never has to be reaped out of its own callsign before it can have it back. oldToken is
-      // the legacy proof and stays for every station still on the shared join token — removing
-      // it would strand the live fleet.
+      // THREE independent proofs, in descending strength. isReservedName has already run above
+      // all of them, so "operator" is never takeable by any route.
+      //
+      // 1. The key. The strong one: it survives the client restarting, the hub restarting, and
+      //    the station losing its token file, so a key holder never has to be reaped out of its
+      //    own callsign. It cannot fire during migration, though — an incumbent registered on the
+      //    shared join token has no keyId — which is why 2 must stay.
+      // 2. The old token. The legacy proof, and the ONLY door open to a station that has just
+      //    been enrolled with a key over a join-token incumbent. Removing it strands the live
+      //    fleet mid-migration; a client that stops offering it 409s on its own callsign.
+      // 3. Unclaimed. A registration restored from the DB at boot that nobody has authenticated
+      //    as yet is a HINT, not a lock. A station whose client-side token is gone has nothing to
+      //    prove with, and before persistence the restart itself freed the name and it self-healed.
+      //    Without this, persistence turns that self-healing case into a permanent 409 that no
+      //    stale timer ever releases — the reaper is armed only by a poll disconnect, and a
+      //    restored entry has never polled. It concedes nothing new: /register is gated by the
+      //    SHARED join token, so any holder could already claim any free callsign. It bounds a
+      //    window that used to be unbounded, closing at the real station's first authenticated
+      //    request (markClaimed at the protected-route gate).
       const provenByKey = key !== null && incumbent?.keyId !== undefined && incumbent.keyId === key.id;
       const provenByToken = Boolean(body.oldToken) && body.oldToken === incumbent?.token;
-      if (!provenByKey && !provenByToken) {
+      const takeable = isUnclaimed(name);
+      if (!provenByKey && !provenByToken && !takeable) {
         return sendError(res, 409, `User "${name}" is already registered`);
+      }
+      if (!provenByKey && !provenByToken) {
+        // The one place a callsign changes hands without proof. Loud on purpose.
+        console.log(`[register-takeover] ${name} claimed an unclaimed restored registration (no proof)`);
       }
       removePoll(name);
       removeQueue(name);
@@ -204,6 +235,8 @@ const handleRegister: RouteHandler = async (req, res) => {
     // across the fleet; /register happens once per station lifetime. This is also the field the
     // operator reads to decide whether the fleet has finished migrating.
     if (key) dbTouchStationKey(key.id);
+    // Whoever just registered holds the new token, so the takeover window is closed either way.
+    markClaimed(name);
     ensureQueue(name);
     setOnline(name);
     // Auto-join #all
@@ -265,6 +298,7 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   const channel = body.channel || "#all";
   try {
     const message = routeMessage(userName!, body.to, content, channel, body.image);
+    const recipients = takeLastRecipientCount();
     broadcast({
       type: "message",
       from: message.from,
@@ -275,7 +309,25 @@ const handleSend: RouteHandler = async (req, res, userName) => {
       image: message.image,
     });
     console.log(`[send] ${userName} -> ${body.to} (${channel}): ${content}${body.image ? " [+image]" : ""}`);
-    sendJson(res, 200, { id: message.id, to: message.to });
+    // Registrations now outlive the hub process, so routeMessage's isUserRegistered() gate passes
+    // for a station that is registered but has not come back since the last restart. The sender
+    // used to get an immediate "User X is not connected"; now the message just queues. That is the
+    // semantics we want (registered, merely offline), but losing the signal entirely would leave a
+    // station talking to a corpse with a 200 every time. Additive field, so the already-deployed
+    // bundles ignore it. Only meaningful for a DM: a broadcast has no single recipient.
+    // `recipients` is the count actually enqueued. It is the ONLY signal distinguishing a
+    // broadcast that reached the room from one that reached nobody, and boot-time restore makes
+    // the second case routine: every persisted channel is given an in-memory member set so
+    // channelExists() is true for it, while its members do not return until they re-register.
+    // Without this, a send into a fully-absent channel is a 200 with an id — the black hole that
+    // channel validation closed, reopened by persistence through a different door.
+    const payload: { id: string; to: string; recipients: number; offline?: boolean } = {
+      id: message.id,
+      to: message.to,
+      recipients,
+    };
+    if (message.to !== "@all") payload.offline = !isOnline(message.to);
+    sendJson(res, 200, payload);
   } catch (e) {
     sendError(res, 404, (e as Error).message);
   }
@@ -1127,6 +1179,13 @@ export function createHubServer(
         setOnline(userName);
         broadcast({ type: "status", name: userName, online: true, timestamp: Date.now() });
       }
+      // The single chokepoint every authenticated request passes through, which is why the two
+      // registration-persistence side effects live here rather than in each handler.
+      // markClaimed: the holder of the token has now proved it, so a restored entry stops being
+      // takeable by any join-token holder. touchSeen: keeps the TTL window alive, debounced
+      // internally so this is not a DB write per request.
+      markClaimed(userName);
+      touchSeen(userName);
       protectedRoute.handler(req, res, userName).catch((e) => {
         sendError(res, 500, (e as Error).message);
       });

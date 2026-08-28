@@ -169,14 +169,14 @@ export class HubClient {
     content: string,
     channel?: string,
     image?: { data: string; mimeType: string },
-  ): Promise<{ id: string; to: string }> {
+  ): Promise<{ id: string; to: string; recipients?: number; offline?: boolean }> {
     const body: { to: string; content: string; channel?: string; image?: { data: string; mimeType: string } } = {
       to,
       content,
     };
     if (channel) body.channel = channel;
     if (image) body.image = image;
-    const res = await this.request<{ id: string; to: string }>({
+    const res = await this.request<{ id: string; to: string; recipients?: number; offline?: boolean }>({
       method: "POST",
       path: "/send",
       token,

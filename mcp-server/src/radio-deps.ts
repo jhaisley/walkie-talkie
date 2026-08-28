@@ -65,7 +65,7 @@ export interface RadioHubClient {
     content: string,
     channel?: string,
     image?: { data: string; mimeType: string },
-  ): Promise<{ id: string; to: string }>;
+  ): Promise<{ id: string; to: string; recipients?: number; offline?: boolean }>;
   /**
    * Long-poll for messages. Resolves null for "nothing arrived in the window", which is the
    * NORMAL idle outcome and must not be an error.

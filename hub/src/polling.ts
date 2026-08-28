@@ -112,6 +112,16 @@ export function recordSeen(userName: string): void {
   lastSeen.set(userName, Date.now());
 }
 
+/**
+ * Seed last-seen from a PERSISTED stamp during boot-time restore. Distinct from recordSeen()
+ * because nothing has happened: the station has not polled, has not proved it is alive, and may
+ * never come back. Stamping Date.now() here would tell the dashboard the fleet just checked in
+ * the instant the hub started, which is exactly the lie the lastSeen column exists to avoid.
+ */
+export function seedLastSeen(userName: string, ts: number): void {
+  lastSeen.set(userName, ts);
+}
+
 /** True if the user currently has a live long-poll connection open. */
 export function hasActivePoll(userName: string): boolean {
   return pendingPolls.has(userName);
@@ -239,4 +249,15 @@ export function removePoll(userName: string): void {
       poll.res.end();
     }
   }
+}
+
+/**
+ * Drop all liveness state, as a fresh process would have it. Exists so a test can simulate a hub
+ * restart in-process (the registrations now survive one, so there is finally something to test on
+ * the far side); a real restart gets this for free. Mirrors resetAuthState/resetChannelState.
+ */
+export function resetPollingState(): void {
+  closeAllPolls();
+  offlineUsers.clear();
+  lastSeen.clear();
 }
