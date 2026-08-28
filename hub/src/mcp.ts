@@ -575,6 +575,30 @@ export async function closeAllMcpSessions(graceMs = 150): Promise<void> {
 }
 
 /** Test seam: how many MCP sessions the hub currently holds. */
+/**
+ * Close the MCP session holding `name`, if any. The operator-remedy hook: /kick deletes the
+ * registration, but a hub-hosted station's callsign is ALSO held by the MCP layer's session
+ * index, and the radio_join guard refuses any new session a live entry still holds. Without
+ * this, a kicked hosted station — or one whose CLI reconnected and left a zombie session —
+ * cannot rejoin its own callsign until the idle sweeper fires, which defaults to 30 minutes.
+ * Discovered live: a kick freed the roster while the name stayed hostage to a dead session.
+ *
+ * markOffline is false: the caller has already decided the registration's fate (kick deletes
+ * it outright), so arming the stale grace here would resurrect a name the operator just freed.
+ */
+export function closeMcpSessionFor(name: string): boolean {
+  const sid = byCallsign.get(name);
+  if (!sid) return false;
+  const entry = sessions.get(sid);
+  if (!entry) {
+    byCallsign.delete(name);
+    return false;
+  }
+  if (!currentOps) return false;
+  closeSession(entry, "kicked", false, currentOps);
+  return true;
+}
+
 export function mcpSessionCount(): number {
   return sessions.size;
 }
