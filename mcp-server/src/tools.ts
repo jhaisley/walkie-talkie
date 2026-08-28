@@ -6,9 +6,10 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { clampPollWaitMs, HubClient } from "./client.js";
+import type { CredentialKind } from "./credential.js";
+import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 import { clearStoredToken, readStoredToken, writeStoredToken } from "./token-store.js";
 import { clientBuild } from "./version.js";
-import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -45,14 +46,20 @@ function fetchUrl(url: string): Promise<Buffer> {
   });
 }
 
+// MODULE GLOBALS, and only safe because each station runs its own stdio process. When the MCP
+// server moves to a remote transport these must become per-session state — one process will then
+// serve many stations, and `credential` in particular cannot be process-wide because each
+// station presents its own. Deleting them belongs to that change, not this one.
 let client: HubClient;
-let joinToken: string;
+let credential: string;
+let credentialKind: CredentialKind;
 let currentToken: string | null = null;
 let currentName: string | null = null;
 
-export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
+export function createMcpServer(hubUrl: string, cred: string, credKind: CredentialKind = "join-token"): McpServer {
   client = new HubClient(hubUrl);
-  joinToken = joinTok;
+  credential = cred;
+  credentialKind = credKind;
 
   const server = new McpServer({
     name: "walkie-talkie",
@@ -64,12 +71,19 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
     { name: z.string().describe("Your display name for this session") },
     async ({ name }) => {
-      // Reclaim path: prefer the live token, else the one persisted by a previous process. The
-      // hub lets the proven owner take its own registration back, so a restarted station
-      // recovers its callsign immediately instead of waiting to be reaped out of it.
-      const priorToken = currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? undefined;
+      // Reclaim path. A station key IS the proof of ownership — the hub matches it against the
+      // incumbent registration's keyId — so a key holder needs no oldToken at all, and reading a
+      // stale one from disk could only introduce a wrong credential to be wrong about.
+      //
+      // On the join token there is no identity to prove, so the persisted token is the ONLY
+      // thing that lets a restarted station take its own callsign back instead of waiting to be
+      // reaped out of it. That path stays exactly as it was.
+      const priorToken =
+        credentialKind === "station-key"
+          ? undefined
+          : (currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? undefined);
       try {
-        const result = await client.register(name, joinToken, priorToken);
+        const result = await client.register(name, credential, priorToken);
         currentToken = result.token;
         currentName = result.name;
         writeStoredToken(client.getBaseUrl(), result.name, result.token);

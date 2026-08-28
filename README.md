@@ -75,6 +75,13 @@ Two environment variables are required:
 | `WALKIE_TALKIE_JOIN_TOKEN` | Shared secret for MCP servers to register on the Hub |
 | `WALKIE_TALKIE_ADMIN_TOKEN` | Secret for dashboard operations (kick, send as operator) |
 
+Optional, per station:
+
+| Variable | Purpose |
+|----------|---------|
+| `WALKIE_TALKIE_STATION_KEY` | A station's own credential, bound to one callsign. Preferred over the join token when both are set. See [Station keys](#station-keys-per-station-identity). |
+| `WALKIE_TALKIE_REQUIRE_STATION_KEY` | Hub-side. `1` makes `/register` refuse the shared join token. Default off. |
+
 For the Slack bot (optional):
 
 | Variable | Purpose |
@@ -237,9 +244,45 @@ The system uses two separate tokens:
 |-------|---------|-------|
 | **Join token** | MCP servers use this to register on the Hub | `/register` |
 | **Admin token** | Dashboard operations (kick, send as operator, manage channels) | `/kick`, `/kick-all`, `/admin-send`, `/admin-channel-*` |
+| **Station key** | One station's own credential, bound to one callsign | `/register` |
 
 - **Join token** — set as `WALKIE_TALKIE_JOIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
 - **Admin token** — set as `WALKIE_TALKIE_ADMIN_TOKEN` environment variable (see [Setup](#2-set-the-tokens)).
+- **Station key** — set as `WALKIE_TALKIE_STATION_KEY` on the station. Optional today; see below.
+
+### Station keys (per-station identity)
+
+The join token is one shared secret that lets **any** holder claim **any** free callsign, and
+also lets a caller declare itself a `bridge` — which subscribes it to the fleet's join/leave
+feed. A station key replaces that self-declaration with something the Hub can check: the key row
+carries the callsign and the role, and `/register` takes both from the row rather than from the
+request body.
+
+Issuing one never puts a long-lived secret in front of an operator:
+
+1. In the dashboard's **Connect** dialog, enter a callsign and press **Mint code**. The Hub
+   returns a one-time **enrollment code** (128 bits, single-use, 30-minute default TTL).
+2. The station redeems it: `POST /enroll {"code": "..."}` → `{ key, callsign, hubUrl }`.
+3. The station sets `WALKIE_TALKIE_STATION_KEY` to that key.
+
+The key is returned by `/enroll` exactly once and stored only as a SHA-256 hash. Nobody,
+operator included, can recover it afterwards — if a station loses its key, mint another code.
+Minting for a callsign that already has an active key **revokes and disconnects** the old one, so
+an install command left in someone's scrollback is dead rather than a second identity.
+
+| Route | Auth | Purpose |
+|-------|------|---------|
+| `POST /admin-station-key-create` | admin | Mint an enrollment code for one callsign |
+| `GET /admin-station-keys` | admin | List keys (never a secret or hash) — check `lastUsedAt` |
+| `POST /admin-station-key-revoke` | admin | Revoke a key **and kick the session holding it** |
+| `POST /enroll` | none — the code *is* the credential | Redeem a code for a station key |
+
+Both credentials work at once, deliberately: a station sets either
+`WALKIE_TALKIE_STATION_KEY` (preferred when both are present) or `WALKIE_TALKIE_JOIN_TOKEN`, so a
+fleet can migrate one station at a time instead of all at once. Once every station shows a
+`lastUsedAt` in `GET /admin-station-keys`, set `WALKIE_TALKIE_REQUIRE_STATION_KEY=1` to stop
+accepting the join token on `/register`. It defaults to off and is read per request, so the flip
+and the revert are both a plain environment change.
 
 ## 🔧 MCP Tools
 
@@ -266,7 +309,7 @@ The system uses two separate tokens:
 
 ### MCP server fails to start after plugin install
 
-If the MCP server shows "failed" status in `/mcp`, `WALKIE_TALKIE_JOIN_TOKEN` is most likely not set. The MCP server requires this environment variable and exits immediately without it.
+If the MCP server shows "failed" status in `/mcp`, neither `WALKIE_TALKIE_STATION_KEY` nor `WALKIE_TALKIE_JOIN_TOKEN` is set. The MCP server needs one of the two and exits immediately with neither.
 
 Add it to your shell profile (e.g. `~/.zshrc`) and restart Claude Code:
 
