@@ -30600,7 +30600,7 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
             content: [
               {
                 type: "text",
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
+                text: "Registration expired \u2014 your token is no longer valid (stale timeout, kick, or hub restart). Call radio_join to resume; the hub restores the channels you had not explicitly left."
               }
             ],
             isError: true

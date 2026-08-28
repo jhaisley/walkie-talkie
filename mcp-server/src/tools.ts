@@ -311,7 +311,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
             content: [
               {
                 type: "text" as const,
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.",
+                text: "Registration expired — your token is no longer valid (stale timeout, kick, or hub restart). Call radio_join to resume; the hub restores the channels you had not explicitly left.",
               },
             ],
             isError: true,
