@@ -127,10 +127,14 @@ export class HubClient {
     });
   }
 
-  async register(name: string, joinToken: string, oldToken?: string): Promise<{ token: string; name: string }> {
+  async register(
+    name: string,
+    joinToken: string,
+    oldToken?: string,
+  ): Promise<{ token: string; name: string; reclaimed?: boolean }> {
     const body: { name: string; oldToken?: string } = { name };
     if (oldToken) body.oldToken = oldToken;
-    const res = await this.request<{ token: string; name: string }>({
+    const res = await this.request<{ token: string; name: string; reclaimed?: boolean }>({
       method: "POST",
       path: "/register",
       token: joinToken,

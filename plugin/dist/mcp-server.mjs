@@ -30374,6 +30374,11 @@ function clearStoredToken(hubUrl2, name, env = process.env) {
   }
 }
 
+// mcp-server/src/version.ts
+function clientBuild() {
+  return true ? "1.7.0+3d8a1d1-dirty" : "source";
+}
+
 // mcp-server/src/helpers.ts
 import fs2 from "node:fs";
 import path2 from "node:path";
@@ -30443,12 +30448,15 @@ function createMcpServer(hubUrl2, joinTok) {
         currentToken = result.token;
         currentName = result.name;
         writeStoredToken(client.getBaseUrl(), result.name, result.token);
-        const reclaimed = priorToken !== void 0 && priorToken !== currentToken;
+        const reclaimed = result.reclaimed === true;
         return {
           content: [
             {
               type: "text",
-              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` + (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "")
+              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` + // Stable markers, in this order, for operators and fleet tooling reading the
+              // pane: whether a held name was taken back, and which bundle this station runs.
+              // Treated as a contract — see the client-build note in README.
+              (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "") + ` [client ${clientBuild()}]`
             }
           ]
         };
@@ -30855,6 +30863,7 @@ ${channelText}`
             type: "text",
             text: JSON.stringify({
               hubUrl: client.getBaseUrl(),
+              clientBuild: clientBuild(),
               token: currentToken,
               waitScript
             })

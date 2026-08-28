@@ -106,6 +106,11 @@ const handleRegister: RouteHandler = async (req, res) => {
     return sendError(res, 403, `"${body.name}" is a reserved name and cannot be registered`);
   }
   try {
+    // Whether this call took over a registration that was still held. Reported back so the
+    // client does not have to infer it: comparing the old and new tokens looks equivalent but
+    // is not, because a fresh register also mints a new token — a station whose name had
+    // already been reaped would then be told it reclaimed something when it started clean.
+    const reclaimed = isUserRegistered(body.name);
     // Allow reconnection only if the caller proves ownership with the old token
     if (isUserRegistered(body.name)) {
       const existingToken = getUserToken(body.name);
@@ -162,7 +167,7 @@ const handleRegister: RouteHandler = async (req, res) => {
       });
     }
 
-    sendJson(res, 200, { token: user.token, name: user.name });
+    sendJson(res, 200, { token: user.token, name: user.name, reclaimed });
   } catch (e) {
     sendError(res, 409, (e as Error).message);
   }
