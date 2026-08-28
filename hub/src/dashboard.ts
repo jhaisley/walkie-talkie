@@ -276,11 +276,16 @@ export function getDashboardHTML(
     cursor: pointer;
     transition: all 0.15s ease;
     opacity: 0;
+    /* Invisible must also mean unclickable. opacity:0 still hit-tests, so
+       without this the delete control stays a live target sitting under the
+       cursor at the right edge of every row. */
+    pointer-events: none;
     flex-shrink: 0;
     margin-left: 4px;
   }
   #channel-list li:hover .channel-del {
     opacity: 1;
+    pointer-events: auto;
   }
   .channel-del:hover {
     border-color: var(--red-border);
@@ -361,10 +366,16 @@ export function getDashboardHTML(
     cursor: pointer;
     transition: all 0.15s ease;
     opacity: 0;
+    /* Invisible must also mean unclickable. opacity:0 leaves the button in the
+       hit-test tree, so an unhovered row still had a live kick target parked at
+       its right edge -- a stray click there disconnected an agent with nothing
+       on screen to explain it. */
+    pointer-events: none;
     flex-shrink: 0;
   }
   #user-list li:hover .kick-btn {
     opacity: 1;
+    pointer-events: auto;
   }
   .kick-btn:hover {
     border-color: var(--red-border);
@@ -454,9 +465,14 @@ export function getDashboardHTML(
     cursor: pointer;
     transition: all 0.15s ease;
     opacity: 0;
+    /* Same invisible-but-clickable trap as .kick-btn and .channel-del: these
+       are launch / edit / delete, so a blind click here starts or destroys an
+       agent config. */
+    pointer-events: none;
   }
   #agent-list li:hover .agent-actions button {
     opacity: 1;
+    pointer-events: auto;
   }
   .agent-launch-btn:hover {
     border-color: var(--green-border) !important;
@@ -1180,7 +1196,8 @@ export function getDashboardHTML(
     // A handle is "stale" when the hub still considers it registered and online, but no
     // long-poll is open and none has started recently. hasActivePoll is the primary signal:
     // lastSeen alone is unreliable because it is stamped at poll START and a healthy poll can
-    // hold open for up to an hour, so a quiet-but-alive listener reads as ancient.
+    // hold open for the whole poll timeout, so a quiet-but-alive listener reads as older
+    // than it is.
     //
     // The grace exists only to cover the brief gap between one poll returning and the next
     // being issued; without it every agent would blink amber on each poll cycle.
@@ -1230,6 +1247,10 @@ export function getDashboardHTML(
     }
 
     function kick(name) {
+      // Kicking revokes the station's registration and token, so it cannot undo
+      // itself the way deleting a channel or an agent config can -- yet those
+      // were the only two guarded actions. Guard the one that costs the most.
+      if (!confirm("Kick " + name + "? Their registration and token are revoked.")) return;
       fetch("/kick", {
         method: "POST",
         headers: adminHeaders,
@@ -1464,6 +1485,11 @@ export function getDashboardHTML(
     }
 
     document.getElementById("stop-all").onclick = () => {
+      // Count the same set the hub does: /kick-all skips "operator".
+      const targets = [...users.keys()].filter((u) => u !== "operator");
+      if (targets.length === 0) return;
+      const label = targets.length === 1 ? " station" : " stations";
+      if (!confirm("Kick all " + targets.length + label + "? Every one loses its registration and token.")) return;
       fetch("/kick-all", { method: "POST", headers: adminHeaders });
     };
 
