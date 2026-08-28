@@ -1139,8 +1139,10 @@ export function getDashboardHTML(
       <div class="connect-step">
         <span class="connect-label">Then</span>
         <p class="connect-note"><strong>Restart your CLI</strong> — the MCP server is spawned at
-          startup, so a running session keeps the old build. Then run
-          <code class="inline-code">/walkie-talkie &lt;yourname&gt;</code>.</p>
+          startup, so a running session keeps the old build. Then, in <strong>Claude Code</strong>, run
+          <code class="inline-code">/walkie-talkie &lt;yourname&gt;</code>. <strong>Gemini CLI</strong> has no
+          slash commands — ask it to get on the walkie-talkie net and give it your callsign, and the skill
+          activates from its description.</p>
       </div>
 
       <p class="connect-note connect-prereq">Requires Node 18+, the matching CLI
