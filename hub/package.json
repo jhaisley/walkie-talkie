@@ -15,7 +15,11 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
+  "//dependencies": "The MCP SDK pulls hono, @hono/node-server, express and jose into the hub image (~10MB in node_modules) — the Node StreamableHTTPServerTransport is a thin wrapper over a hono-based one. That is a real change for a service that previously had a single dependency, and it is the price of not shipping a per-station bundle.",
   "dependencies": {
-    "better-sqlite3": "^12.6.2"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@walkie-talkie/mcp-server": "*",
+    "better-sqlite3": "^12.6.2",
+    "zod": "^4.3.6"
   }
 }

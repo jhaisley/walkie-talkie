@@ -121,11 +121,23 @@ export function unregisterUser(name: string): void {
   }
 }
 
+/**
+ * The callsign a session token currently belongs to, or null.
+ *
+ * Exported because a hub-hosted MCP session calls hub operations in-process rather than over
+ * HTTP, so there is no request to authenticate — but the token still has to be checked on every
+ * call. Skipping that would make an MCP session's held token unrevocable: a kicked or
+ * stale-reaped station would keep acting under its callsign because nothing ever re-examined
+ * the credential it was carrying in memory.
+ */
+export function getUserByToken(token: string): string | null {
+  return tokenToName.get(token) ?? null;
+}
+
 export function authenticateRequest(req: IncomingMessage): string | null {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  return tokenToName.get(token) ?? null;
+  return getUserByToken(auth.slice(7));
 }
 
 export function getRegisteredUsers(): string[] {

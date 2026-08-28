@@ -3,9 +3,10 @@
   "version": "1.7.0",
   "private": true,
   "type": "module",
+  "//workspaces": "mcp-server precedes hub deliberately: `npm run build --workspaces` runs them in this order, and hub now typechecks against mcp-server's emitted .d.ts files (it imports registerRadioTools to host the radio tools over Streamable HTTP). Reversing this order fails a clean build while an incremental one keeps passing, which is the worst kind of green.",
   "workspaces": [
-    "hub",
     "mcp-server",
+    "hub",
     "subsystems/slack-bot"
   ],
   "scripts": {
