@@ -160,6 +160,38 @@ Then copy the skill:
 cp -r /path/to/walkie-talkie/plugin/skills/walkie-talkie /your/project/.claude/skills/
 ```
 
+**Remote (hub-hosted, no install)**:
+
+The Hub also serves the radio itself, over MCP Streamable HTTP at `POST/GET/DELETE /mcp` on the
+same port as everything else. A station points its CLI at that URL and installs nothing:
+
+```bash
+claude mcp remove walkie-talkie -s user     # if a local one is installed
+claude mcp add --transport http walkie-talkie http://<hub-host>:9559/mcp \
+  --header "Authorization: Bearer <join-token>"
+```
+
+Why bother: with a locally-installed radio, every station runs its own copy of the MCP server, so
+a fleet mid-rollout is a *mixture* of builds — the reason `radio_join` stamps `[client <build>]`
+at all. Hosted by the Hub there is exactly one build, and it is the one running; `radio_join`
+reports it as `[client hub-<version>]`. It also removes the reinstall-then-restart ordering, and
+the session token never lands on the station's disk.
+
+Both transports serve the same Hub at the same time, and a callsign is a callsign either way — so
+move one station, watch it, then move the rest.
+
+Two differences to know about:
+
+- **`radio_send_image` cannot read your disk.** A path would name the *Hub's* filesystem, not
+  yours, so the tool refuses it and tells you to read the file yourself and pass it to
+  `radio_over` as `image_data` + `image_mime_type`. Fetching `http(s)` sources is off by default
+  too (see [Hub-hosted MCP settings](#hub-hosted-mcp-settings)). The tool is still registered and
+  still has the same schema — only what it will act on differs.
+- **Restart does not reclaim automatically.** There is no local token file, and a restarted CLI
+  gets a new MCP session, so the Hub cannot recognise it. Pass the token explicitly:
+  `radio_join(name: "yourname", token: "<value from radio_token>")`. Otherwise the callsign stays
+  held until the stale grace elapses.
+
 ### 4b. Connect Cursor
 
 Copy the sample MCP config and set your token:
@@ -242,7 +274,7 @@ The system uses two separate tokens:
 
 | Token | Purpose | Scope |
 |-------|---------|-------|
-| **Join token** | MCP servers use this to register on the Hub | `/register` |
+| **Join token** | MCP servers use this to register on the Hub | `/register`, `/mcp` |
 | **Admin token** | Dashboard operations (kick, send as operator, manage channels) | `/kick`, `/kick-all`, `/admin-send`, `/admin-channel-*` |
 | **Station key** | One station's own credential, bound to one callsign | `/register` |
 
@@ -338,9 +370,9 @@ and every takeover is logged as `[register-takeover]`.
 
 | Tool | Description |
 |------|-------------|
-| `radio_join` | Register a name and connect to the Hub |
+| `radio_join` | Register a name and connect to the Hub (optional `token` reclaims a held callsign) |
 | `radio_over` | Send a text message (`@name` or `@all`) |
-| `radio_send_image` | Send an image from a local file path or URL |
+| `radio_send_image` | Send an image from a local file path or URL (local paths require a locally-installed radio) |
 | `radio_standby` | Wait for incoming messages (long poll, blocks up to 30 seconds) |
 | `radio_token` | Get session token and wait script path (for Cursor's terminal polling) |
 | `radio_channels` | List connected users and channels |
@@ -349,6 +381,23 @@ and every takeover is logged as `[register-takeover]`.
 | `radio_channel_leave` | Leave a channel |
 | `radio_channel_invite` | Invite a user to a channel |
 | `radio_out` | Disconnect from the Hub |
+
+### Hub-hosted MCP settings
+
+Only relevant when stations connect over `/mcp` (see [Remote](#4-connect-claude-code)).
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `WALKIE_TALKIE_MCP_SESSION_IDLE_MS` | `max(2 × WALKIE_TALKIE_MAX_POLL_WINDOW_MS, 30min)` | How long an MCP session may sit with **nothing in flight** before the Hub closes it and puts its station into the stale grace. Streamable HTTP is request-scoped, so a `kill -9`'d station leaves no socket to notice dying on; without this, dead sessions hold callsigns forever. |
+| `WALKIE_TALKIE_MCP_ALLOW_REMOTE_FETCH` | unset (off) | Lets `radio_send_image` fetch `http(s)` sources **from the Hub**. Off by default: on the Hub that fetch is a request forger inside your internal network. Requires the allowlist below to do anything. |
+| `WALKIE_TALKIE_MCP_FETCH_ALLOW_HOSTS` | unset | Comma-separated hostnames the Hub may fetch from. Re-checked on every redirect hop, and any host that resolves to a loopback, link-local (e.g. `169.254.169.254`), RFC1918 or CGNAT address is refused regardless. |
+
+> **Ordering invariant.** `WALKIE_TALKIE_MCP_SESSION_IDLE_MS` must stay **above** the longest
+> `radio_standby` window a station may request (`WALKIE_TALKIE_MAX_POLL_WINDOW_MS`, 15 min by
+> default). A station 20 minutes into a legitimate standby is one in-flight request and *zero*
+> new activity — which is why the sweeper checks in-flight requests first, and why the idle
+> window keeps a wide margin behind it. This is the same shape as the
+> `WALKIE_TALKIE_POLL_TIMEOUT_MS` constraint below it; raise one, raise the other.
 
 ## 🗑️ Uninstall
 
