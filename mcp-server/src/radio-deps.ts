@@ -88,8 +88,17 @@ export interface RadioHubClient {
 export interface RadioDeps {
   /** Hub operations for this session. */
   client: RadioHubClient;
-  /** The shared join token presented at radio_join. */
+  /**
+   * The credential presented at radio_join: a shared join token, or a per-station key once the
+   * station has been enrolled. Carried here rather than in a module global specifically because a
+   * remote transport serves many stations from one process and each presents its own.
+   */
   joinToken: string;
+  /**
+   * Which kind of credential `joinToken` is. Affects only how the hub derives identity; the client
+   * presents it identically either way.
+   */
+  credentialKind: "join-token" | "station-key";
   /** Per-session registration state. MUST be a distinct object per MCP server instance. */
   session: RadioSession;
   /**

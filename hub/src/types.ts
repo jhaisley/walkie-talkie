@@ -22,6 +22,47 @@ export interface User {
   token: string;
   role: UserRole;
   registeredAt: number;
+  /**
+   * The station key (`station_keys.id`) this registration was proven with, if any. Absent for
+   * a registration made with the shared join token, and for the dashboard's lazily-created
+   * "operator". It is what makes a re-register self-provable without an oldToken, and what lets
+   * revocation know whether the live session belongs to the key being revoked.
+   */
+  keyId?: string;
+}
+
+/**
+ * A per-station credential. The plaintext secret is NEVER stored — only `secret_hash`
+ * (sha256 hex). One ACTIVE key per callsign is enforced structurally by a partial unique
+ * index, so minting for a callsign that already has one is a rotation, not a second identity.
+ */
+export interface StationKeyRow {
+  id: string;
+  callsign: string;
+  secret_hash: string;
+  role: UserRole;
+  label: string | null;
+  created_at: number;
+  created_by: string;
+  last_used_at: number | null;
+  /** NULL = active. Set = dead: resolveStationKey refuses it from that moment on. */
+  revoked_at: number | null;
+}
+
+/**
+ * A one-time enrollment code, keyed by the sha256 of the code — the code itself is never
+ * stored, so a database read cannot enroll anything. Redemption is a single conditional
+ * UPDATE, which is what stops one code minting two keys.
+ */
+export interface StationEnrollmentRow {
+  code_hash: string;
+  callsign: string;
+  role: UserRole;
+  label: string | null;
+  created_at: number;
+  expires_at: number;
+  redeemed_at: number | null;
+  key_id: string | null;
 }
 
 export interface RegisterRequest {

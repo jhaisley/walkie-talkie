@@ -597,6 +597,32 @@ export function getDashboardHTML(
   }
   .connect-prereq { color: var(--text-tertiary); }
   .connect-step { display: flex; flex-direction: column; gap: 6px; }
+  .connect-mint { display: flex; align-items: center; gap: 8px; }
+  .connect-mint input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 9px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .mint-btn {
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .mint-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .mint-btn:disabled { opacity: 0.5; cursor: default; }
+  .mint-error { color: var(--red); }
   .connect-label {
     font-size: 11px;
     font-weight: 600;
@@ -1118,8 +1144,25 @@ export function getDashboardHTML(
   <div class="dialog-overlay" id="connect-dialog" style="display:none">
     <div class="dialog connect-dialog">
       <h2>Connect an agent</h2>
-      <p class="connect-lead">Run this on the machine you want to connect. It is safe to re-run —
-        it reinstalls the MCP server and refreshes the token.</p>
+      <p class="connect-lead">Run the installer on the machine you want to connect. It is safe to
+        re-run &mdash; it reinstalls the MCP server and refreshes the credential.</p>
+
+      <div class="connect-step">
+        <span class="connect-label">Optional &mdash; mint a per-station key</span>
+        <div class="connect-mint">
+          <input type="text" id="mint-callsign" placeholder="callsign, e.g. alpha" autocomplete="off" spellcheck="false">
+          <button class="mint-btn" id="mint-btn">Mint code</button>
+        </div>
+        <p class="connect-note" id="mint-status"></p>
+        <div class="connect-cmd" id="mint-code-row" style="display:none"><code id="mint-code"></code><button class="copy-btn" data-copy="mint-code">Copy</button></div>
+        <p class="connect-note connect-prereq">An enrollment code is single-use and expires. The
+          station key it redeems is bound to that one callsign, is shown once, and is stored here
+          only as a hash &mdash; nobody, including you, can recover it afterwards. If a station
+          loses its key, mint another code; minting for a callsign that already has an active key
+          revokes the old one and disconnects it. Redeem with
+          <code class="inline-code">POST /enroll</code> or an installer revision that accepts a
+          code. Without one, the installer still configures the shared join token as before.</p>
+      </div>
 
       <div class="connect-step">
         <span class="connect-label">Linux &middot; macOS &middot; WSL &mdash; Claude Code</span>
@@ -1830,6 +1873,53 @@ export function getDashboardHTML(
     // Same installer, rendered for the gemini CLI — see installer/render.sh on the hub host.
     document.getElementById("connect-ps-gemini").textContent =
       "irm " + installerBase + "/install-gemini.ps1 | iex";
+
+    // Mint an enrollment code for one callsign. The hub returns the CODE, never the key: the key
+    // is minted at redemption and shown only to the machine that redeems it, so the secret never
+    // reaches this browser and there is nothing here to leak or to have to recover.
+    const mintCallsignEl = document.getElementById("mint-callsign");
+    const mintBtnEl = document.getElementById("mint-btn");
+    const mintStatusEl = document.getElementById("mint-status");
+    const mintCodeRowEl = document.getElementById("mint-code-row");
+    const mintCodeEl = document.getElementById("mint-code");
+
+    async function mintEnrollmentCode() {
+      const callsign = mintCallsignEl.value.trim();
+      mintStatusEl.classList.remove("mint-error");
+      if (!callsign) {
+        mintStatusEl.textContent = "Enter a callsign first.";
+        mintStatusEl.classList.add("mint-error");
+        return;
+      }
+      mintBtnEl.disabled = true;
+      mintStatusEl.textContent = "Minting...";
+      mintCodeRowEl.style.display = "none";
+      try {
+        const r = await fetch("/admin-station-key-create", {
+          method: "POST",
+          headers: adminHeaders,
+          body: JSON.stringify({ callsign: callsign }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          mintStatusEl.textContent = data.error || "Mint failed.";
+          mintStatusEl.classList.add("mint-error");
+          return;
+        }
+        mintCodeEl.textContent = data.code;
+        mintCodeRowEl.style.display = "flex";
+        mintStatusEl.textContent =
+          "Code for " + data.callsign + " (role " + data.role + "), valid for "
+          + data.ttlMinutes + " minutes. Single use.";
+      } catch (e) {
+        mintStatusEl.textContent = "Mint failed: " + e.message;
+        mintStatusEl.classList.add("mint-error");
+      } finally {
+        mintBtnEl.disabled = false;
+      }
+    }
+    mintBtnEl.onclick = mintEnrollmentCode;
+    mintCallsignEl.onkeydown = (e) => { if (e.key === "Enter") mintEnrollmentCode(); };
 
     function openConnectDialog() { connectDialogEl.style.display = "flex"; }
     function closeConnectDialog() { connectDialogEl.style.display = "none"; }

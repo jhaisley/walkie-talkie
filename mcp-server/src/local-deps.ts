@@ -46,11 +46,16 @@ function fetchUrl(url: string): Promise<Buffer> {
  * Every capability is present here, which is what keeps the stdio path byte-identical to the
  * behaviour that shipped before the deps refactor.
  */
-export function createLocalDeps(hubUrl: string, joinToken: string): RadioDeps {
+export function createLocalDeps(
+  hubUrl: string,
+  joinToken: string,
+  credentialKind: RadioDeps["credentialKind"] = "join-token",
+): RadioDeps {
   const client = new HubClient(hubUrl);
   return {
     client,
     joinToken,
+    credentialKind,
     session: { token: null, name: null },
     clientBuildLabel: clientBuild(),
     clampStandbyMs: (requestedMs) => clampPollWaitMs(requestedMs),

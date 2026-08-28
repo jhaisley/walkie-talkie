@@ -127,9 +127,18 @@ export class HubClient {
     });
   }
 
+  /**
+   * `credential` is whichever secret this station holds: a per-station key or the shared join
+   * token. The hub distinguishes them by format, so the wire shape is identical either way and
+   * this method does not need to know which it was handed.
+   *
+   * `name` still goes in the body. With a station key it is only a consistency check — the hub
+   * takes the callsign from the key and answers 403 if the body disagrees, rather than silently
+   * registering the station under a name its own transcript never mentions.
+   */
   async register(
     name: string,
-    joinToken: string,
+    credential: string,
     oldToken?: string,
   ): Promise<{ token: string; name: string; reclaimed?: boolean }> {
     const body: { name: string; oldToken?: string } = { name };
@@ -137,7 +146,7 @@ export class HubClient {
     const res = await this.request<{ token: string; name: string; reclaimed?: boolean }>({
       method: "POST",
       path: "/register",
-      token: joinToken,
+      token: credential,
       body,
     });
     if (res.status !== 200) {

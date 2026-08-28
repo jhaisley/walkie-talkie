@@ -580,11 +580,15 @@ export function registerRadioTools(server: McpServer, deps: RadioDeps): void {
  * has to be invisible to installed stations, which is the only way to land it without a fleet
  * reinstall.
  */
-export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
+export function createMcpServer(
+  hubUrl: string,
+  joinTok: string,
+  credKind: "join-token" | "station-key" = "join-token",
+): McpServer {
   const server = new McpServer({
     name: "walkie-talkie",
     version: "1.0.0",
   });
-  registerRadioTools(server, createLocalDeps(hubUrl, joinTok));
+  registerRadioTools(server, createLocalDeps(hubUrl, joinTok, credKind));
   return server;
 }
