@@ -3222,8 +3222,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3422,8 +3422,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path4, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7568,10 +7568,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7954,11 +7954,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -8141,7 +8141,7 @@ function formatError(error48, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error48, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error49, path4 = []) => {
+  const processError = (error49, path5 = []) => {
     var _a2, _b;
     for (const issue2 of error49.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -8151,7 +8151,7 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path5, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8183,8 +8183,8 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path4) {
+  const path5 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path5) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -20161,13 +20161,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path4 = ref.slice(1).split("/").filter(Boolean);
-  if (path4.length === 0) {
+  const path5 = ref.slice(1).split("/").filter(Boolean);
+  if (path5.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path4[0] === defsKey) {
-    const key = path4[1];
+  if (path5[0] === defsKey) {
+    const key = path5[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -22176,12 +22176,18 @@ var StdioServerTransport = class {
   }
 };
 
+// mcp-server/src/credential.ts
+function resolveCredential(env = process.env) {
+  const key = env.WALKIE_TALKIE_STATION_KEY?.trim();
+  if (key) return { value: key, kind: "station-key" };
+  const joinToken = env.WALKIE_TALKIE_JOIN_TOKEN?.trim();
+  if (joinToken) return { value: joinToken, kind: "join-token" };
+  return null;
+}
+var MISSING_CREDENTIAL_MESSAGE = "Error: set WALKIE_TALKIE_STATION_KEY (preferred) or WALKIE_TALKIE_JOIN_TOKEN in the MCP server's environment";
+
 // mcp-server/src/tools.ts
-import fs3 from "node:fs";
-import http2 from "node:http";
-import https2 from "node:https";
-import path3 from "node:path";
-import { fileURLToPath } from "node:url";
+import path4 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -22542,8 +22548,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -22658,11 +22664,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -30096,6 +30102,29 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
+// mcp-server/src/helpers.ts
+import fs from "node:fs";
+import path from "node:path";
+function resolveWaitScript(thisDir, exists = fs.existsSync) {
+  const candidates = [
+    path.resolve(thisDir, "..", "bin", "radio-wait.sh"),
+    path.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
+  ];
+  return candidates.find(exists) ?? null;
+}
+function formatConnectedUsers(users) {
+  if (users.length === 0) return "No users connected.";
+  const rendered = users.map((u) => u.online ? u.name : `${u.name} (offline)`).join(", ");
+  return `Connected users: ${rendered}`;
+}
+
+// mcp-server/src/local-deps.ts
+import fs3 from "node:fs";
+import http2 from "node:http";
+import https2 from "node:https";
+import path3 from "node:path";
+import { fileURLToPath } from "node:url";
+
 // mcp-server/src/client.ts
 import http from "node:http";
 import https from "node:https";
@@ -30177,13 +30206,22 @@ var HubClient = class {
       req.end();
     });
   }
-  async register(name, joinToken3, oldToken) {
+  /**
+   * `credential` is whichever secret this station holds: a per-station key or the shared join
+   * token. The hub distinguishes them by format, so the wire shape is identical either way and
+   * this method does not need to know which it was handed.
+   *
+   * `name` still goes in the body. With a station key it is only a consistency check — the hub
+   * takes the callsign from the key and answers 403 if the body disagrees, rather than silently
+   * registering the station under a name its own transcript never mentions.
+   */
+  async register(name, credential2, oldToken) {
     const body = { name };
     if (oldToken) body.oldToken = oldToken;
     const res = await this.request({
       method: "POST",
       path: "/register",
-      token: joinToken3,
+      token: credential2,
       body
     });
     if (res.status !== 200) {
@@ -30336,13 +30374,13 @@ var HubClient = class {
 };
 
 // mcp-server/src/token-store.ts
-import fs from "node:fs";
+import fs2 from "node:fs";
 import os from "node:os";
-import path from "node:path";
+import path2 from "node:path";
 function stateDir(env = process.env) {
   if (env.WALKIE_TALKIE_STATE_DIR) return env.WALKIE_TALKIE_STATE_DIR;
-  const base = env.XDG_STATE_HOME || (env.LOCALAPPDATA ?? path.join(os.homedir(), ".local", "state"));
-  return path.join(base, "walkie-talkie");
+  const base = env.XDG_STATE_HOME || (env.LOCALAPPDATA ?? path2.join(os.homedir(), ".local", "state"));
+  return path2.join(base, "walkie-talkie");
 }
 function tokenKey(hubUrl2, name) {
   const safe = (v) => v.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 64);
@@ -30350,7 +30388,7 @@ function tokenKey(hubUrl2, name) {
 }
 function readStoredToken(hubUrl2, name, env = process.env) {
   try {
-    const v = fs.readFileSync(path.join(stateDir(env), tokenKey(hubUrl2, name)), "utf8").trim();
+    const v = fs2.readFileSync(path2.join(stateDir(env), tokenKey(hubUrl2, name)), "utf8").trim();
     return v.length > 0 ? v : null;
   } catch {
     return null;
@@ -30359,54 +30397,27 @@ function readStoredToken(hubUrl2, name, env = process.env) {
 function writeStoredToken(hubUrl2, name, token, env = process.env) {
   try {
     const dir = stateDir(env);
-    fs.mkdirSync(dir, { recursive: true });
-    const file2 = path.join(dir, tokenKey(hubUrl2, name));
+    fs2.mkdirSync(dir, { recursive: true });
+    const file2 = path2.join(dir, tokenKey(hubUrl2, name));
     const tmp = `${file2}.tmp`;
-    fs.writeFileSync(tmp, token, { mode: 384 });
-    fs.renameSync(tmp, file2);
+    fs2.writeFileSync(tmp, token, { mode: 384 });
+    fs2.renameSync(tmp, file2);
   } catch {
   }
 }
 function clearStoredToken(hubUrl2, name, env = process.env) {
   try {
-    fs.unlinkSync(path.join(stateDir(env), tokenKey(hubUrl2, name)));
+    fs2.unlinkSync(path2.join(stateDir(env), tokenKey(hubUrl2, name)));
   } catch {
   }
 }
 
 // mcp-server/src/version.ts
 function clientBuild() {
-  return true ? "1.7.0+0d8b98c-dirty" : "source";
+  return true ? "1.7.0+6844207-dirty" : "source";
 }
 
-// mcp-server/src/helpers.ts
-import fs2 from "node:fs";
-import path2 from "node:path";
-function resolveWaitScript(thisDir, exists = fs2.existsSync) {
-  const candidates = [
-    path2.resolve(thisDir, "..", "bin", "radio-wait.sh"),
-    path2.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
-  ];
-  return candidates.find(exists) ?? null;
-}
-function formatConnectedUsers(users) {
-  if (users.length === 0) return "No users connected.";
-  const rendered = users.map((u) => u.online ? u.name : `${u.name} (offline)`).join(", ");
-  return `Connected users: ${rendered}`;
-}
-
-// mcp-server/src/tools.ts
-var MIME_TYPES = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp"
-};
-function getMimeType(source) {
-  const ext = path3.extname(source).toLowerCase();
-  return MIME_TYPES[ext] ?? "image/png";
-}
+// mcp-server/src/local-deps.ts
 function fetchUrl(url2) {
   return new Promise((resolve, reject) => {
     const transport2 = url2.startsWith("https") ? https2 : http2;
@@ -30426,43 +30437,92 @@ function fetchUrl(url2) {
     }).on("error", reject);
   });
 }
-var client;
-var joinToken;
-var currentToken = null;
-var currentName = null;
-function createMcpServer(hubUrl2, joinTok) {
-  client = new HubClient(hubUrl2);
-  joinToken = joinTok;
-  const server2 = new McpServer({
-    name: "walkie-talkie",
-    version: "1.0.0"
-  });
+function createLocalDeps(hubUrl2, joinToken, credentialKind = "join-token") {
+  const client = new HubClient(hubUrl2);
+  return {
+    client,
+    joinToken,
+    credentialKind,
+    session: { token: null, name: null },
+    clientBuildLabel: clientBuild(),
+    clampStandbyMs: (requestedMs) => clampPollWaitMs(requestedMs),
+    readLocalFile: (source) => fs3.readFileSync(source),
+    fetchRemoteUrl: fetchUrl,
+    waitScriptPath: () => resolveWaitScript(path3.dirname(fileURLToPath(import.meta.url))),
+    tokenStore: {
+      read: readStoredToken,
+      write: writeStoredToken,
+      clear: clearStoredToken
+    }
+  };
+}
+
+// mcp-server/src/tools.ts
+var MIME_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp"
+};
+function getMimeType(source) {
+  const ext = path4.extname(source).toLowerCase();
+  return MIME_TYPES[ext] ?? "image/png";
+}
+var NOT_ON_AIR = "Not on the air. Use radio_join first.";
+function renderMessages(messages, separator) {
+  const contentBlocks = [];
+  for (const m of messages) {
+    if (m.image) {
+      contentBlocks.push({ type: "image", data: m.image.data, mimeType: m.image.mimeType });
+    }
+    const imageTag = m.image ? " [image attached]" : "";
+    const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
+    contentBlocks.push({ type: "text", text: line });
+  }
+  const channels = [...new Set(messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))];
+  if (channels.length > 0) {
+    contentBlocks.push({
+      type: "text",
+      text: `${separator}IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
+    });
+  }
+  return contentBlocks;
+}
+var KILLED_TEXT = "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately.";
+function registerRadioTools(server2, deps) {
+  const { client, session } = deps;
   server2.tool(
     "radio_join",
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
-    { name: external_exports.string().describe("Your display name for this session") },
-    async ({ name }) => {
-      const priorToken = currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? void 0;
+    {
+      name: external_exports.string().describe("Your display name for this session"),
+      token: external_exports.string().optional().describe(
+        "A session token previously issued for this callsign (see radio_token). Supply it to reclaim a registration this station still holds \u2014 required when the radio is hosted remotely, which has no local token store to reclaim from."
+      )
+    },
+    async ({ name, token }) => {
+      const priorToken = token ?? session.token ?? deps.tokenStore.read(client.getBaseUrl(), name) ?? void 0;
       try {
-        const result = await client.register(name, joinToken, priorToken);
-        currentToken = result.token;
-        currentName = result.name;
-        writeStoredToken(client.getBaseUrl(), result.name, result.token);
+        const result = await client.register(name, deps.joinToken, priorToken);
+        session.token = result.token;
+        session.name = result.name;
+        deps.tokenStore.write(client.getBaseUrl(), result.name, result.token);
         const reclaimed = result.reclaimed === true;
         return {
           content: [
             {
               type: "text",
-              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` + // Stable markers, in this order, for operators and fleet tooling reading the
+              text: `Registered as "${session.name}". You are now in #all. You can now send and receive messages.` + // Stable markers, in this order, for operators and fleet tooling reading the
               // pane: whether a held name was taken back, and which bundle this station runs.
               // Treated as a contract — see the client-build note in README.
-              (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "") + ` [client ${clientBuild()}]`
+              (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "") + ` [client ${deps.clientBuildLabel}]`
             }
           ]
         };
       } catch (e) {
         const msg = e.message;
-        if (msg.includes("already registered")) clearStoredToken(client.getBaseUrl(), name);
+        if (msg.includes("already registered")) deps.tokenStore.clear(client.getBaseUrl(), name);
         return {
           content: [{ type: "text", text: `Registration failed: ${msg}` }],
           isError: true
@@ -30483,20 +30543,25 @@ function createMcpServer(hubUrl2, joinTok) {
       image_mime_type: external_exports.string().optional().describe("MIME type of the image (e.g. 'image/png'). Must be provided together with image_data.")
     },
     async ({ to, message, channel, image_data, image_mime_type }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
         const image = image_data && image_mime_type ? { data: image_data, mimeType: image_mime_type } : void 0;
-        const result = await client.send(currentToken, to, message, channel, image);
+        const result = await client.send(session.token, to, message, channel, image);
         return {
           content: [
             {
               type: "text",
-              text: `Message sent to ${result.to} in ${channel || "#all"} (id: ${result.id})`
+              // Report who it actually reached. A send that reached NOBODY is otherwise
+              // indistinguishable from one that reached the room — both a 200 with an id — and
+              // that silence has already cost this fleet ~35 minutes once, when a station talked
+              // to a mistyped channel. `recipients` is absent on hubs older than this field, so
+              // the qualifier simply does not appear rather than claiming zero.
+              text: `Message sent to ${result.to} in ${channel || "#all"} (id: ${result.id})` + (result.recipients === 0 ? " \u2014 WARNING: delivered to 0 recipients. Nobody is currently in that channel; check radio_channels." : typeof result.recipients === "number" ? ` \u2014 ${result.recipients} recipient(s)` : "") + (result.offline ? " \u2014 NOTE: that station is registered but offline; it will see this when it returns." : "")
             }
           ]
         };
@@ -30508,9 +30573,10 @@ function createMcpServer(hubUrl2, joinTok) {
       }
     }
   );
+  const sendImageDescription = deps.readLocalFile ? "Send an image from a local file path or URL. Much faster than passing base64 via radio_over." : deps.fetchRemoteUrl ? "Send an image from an http(s) URL. Local file paths are NOT available: this station's radio is hosted by the hub, so a path would name the hub's disk, not yours. For a local file, read it yourself and pass it to radio_over as image_data + image_mime_type." : "Send an image. This station's radio is hosted by the hub, which reads neither your disk nor remote URLs, so both source forms are unavailable here: read the file yourself and pass it to radio_over as image_data + image_mime_type.";
   server2.tool(
     "radio_send_image",
-    "Send an image from a local file path or URL. Much faster than passing base64 via radio_over.",
+    sendImageDescription,
     {
       to: external_exports.string().describe("Recipient: @name or @all"),
       source: external_exports.string().describe("Image file path or URL (http/https)"),
@@ -30518,22 +30584,40 @@ function createMcpServer(hubUrl2, joinTok) {
       channel: external_exports.string().optional().describe("Channel to send to (default: #all)")
     },
     async ({ to, source, message, channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
+          isError: true
+        };
+      }
+      const isUrl = source.startsWith("http://") || source.startsWith("https://");
+      if (isUrl && !deps.fetchRemoteUrl) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "This radio does not fetch remote URLs. Download the image yourself and pass it to radio_over as image_data + image_mime_type."
+            }
+          ],
+          isError: true
+        };
+      }
+      if (!isUrl && !deps.readLocalFile) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "This station is connected to a remote radio, so it cannot read files from your disk. Read the file yourself and pass it to radio_over as image_data + image_mime_type, or supply an http(s) URL if your hub allows it."
+            }
+          ],
           isError: true
         };
       }
       try {
-        let buf;
-        if (source.startsWith("http://") || source.startsWith("https://")) {
-          buf = await fetchUrl(source);
-        } else {
-          buf = fs3.readFileSync(source);
-        }
+        const buf = isUrl ? await deps.fetchRemoteUrl(source) : deps.readLocalFile(source);
         const data = buf.toString("base64");
         const mimeType = getMimeType(source);
-        const result = await client.send(currentToken, to, message ?? "", channel, { data, mimeType });
+        const result = await client.send(session.token, to, message ?? "", channel, { data, mimeType });
         return {
           content: [
             {
@@ -30555,14 +30639,14 @@ function createMcpServer(hubUrl2, joinTok) {
     "Check for new messages immediately without waiting. Returns any queued messages instantly. Use this instead of radio_standby when you want to poll periodically with sleep in between.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        const result = await client.inbox(currentToken);
+        const result = await client.inbox(session.token);
         if (result.messages.length === 0) {
           return {
             content: [{ type: "text", text: "No new messages." }]
@@ -30570,42 +30654,14 @@ function createMcpServer(hubUrl2, joinTok) {
         }
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
         if (killed) {
-          currentToken = null;
-          currentName = null;
+          session.token = null;
+          session.name = null;
           return {
-            content: [
-              {
-                type: "text",
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
-              }
-            ],
+            content: [{ type: "text", text: KILLED_TEXT }],
             isError: true
           };
         }
-        const contentBlocks = [];
-        for (const m of result.messages) {
-          if (m.image) {
-            contentBlocks.push({
-              type: "image",
-              data: m.image.data,
-              mimeType: m.image.mimeType
-            });
-          }
-          const imageTag = m.image ? " [image attached]" : "";
-          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
-          contentBlocks.push({ type: "text", text: line });
-        }
-        const channels = [
-          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))
-        ];
-        if (channels.length > 0) {
-          contentBlocks.push({
-            type: "text",
-            text: `
-IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}`
-          });
-        }
-        return { content: contentBlocks };
+        return { content: renderMessages(result.messages, "\n") };
       } catch (e) {
         return {
           content: [{ type: "text", text: `Check failed: ${e.message}` }],
@@ -30618,15 +30674,22 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
     "radio_standby",
     "Stand by for incoming messages using long polling. Returns as soon as a message arrives, or empty when the wait window elapses. Optionally pass wait_seconds to choose the window: use a long one (e.g. 1200 = 20 minutes) when you expect to be idle or are about to start long running work, and a short one when you are mid-conversation and expect a prompt reply. A longer window does NOT delay delivery \u2014 the hub answers the moment a message is routed \u2014 it only reduces how often an empty return wakes you, which is the main cost of sitting idle. Values above this install's configured ceiling are clamped rather than rejected.",
     { wait_seconds: external_exports.number().positive().optional() },
-    async ({ wait_seconds }) => {
-      if (!currentToken) {
+    async ({ wait_seconds }, extra) => {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        const result = await client.poll(currentToken, clampPollWaitMs(wait_seconds ? wait_seconds * 1e3 : void 0));
+        const result = await client.poll(
+          session.token,
+          deps.clampStandbyMs(wait_seconds ? wait_seconds * 1e3 : void 0),
+          // Only the in-process (hub-hosted) client uses this: it stops waiting when the tool
+          // call is cancelled. It must NOT be read as a dead station — a cancelled standby is
+          // an agent changing its mind, and treating that as a crash is what reaped the fleet.
+          extra?.signal
+        );
         if (!result || result.messages.length === 0) {
           return {
             content: [{ type: "text", text: "No new messages (poll timed out). Try again." }]
@@ -30634,49 +30697,20 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
         }
         const killed = result.messages.find((m) => m.content.startsWith("RADIO_KILLED:"));
         if (killed) {
-          currentToken = null;
-          currentName = null;
+          session.token = null;
+          session.name = null;
           return {
-            content: [
-              {
-                type: "text",
-                text: "RADIO_KILLED: You have been disconnected by the operator. Do NOT call any more radio tools. Stop immediately."
-              }
-            ],
+            content: [{ type: "text", text: KILLED_TEXT }],
             isError: true
           };
         }
-        const contentBlocks = [];
-        for (const m of result.messages) {
-          if (m.image) {
-            contentBlocks.push({
-              type: "image",
-              data: m.image.data,
-              mimeType: m.image.mimeType
-            });
-          }
-          const imageTag = m.image ? " [image attached]" : "";
-          const line = `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.channel || "#all"} ${m.from} \u2192 ${m.to}: ${m.content}${imageTag}`;
-          contentBlocks.push({ type: "text", text: line });
-        }
-        const channels = [
-          ...new Set(result.messages.filter((m) => m.channel && m.channel !== "#all").map((m) => m.channel))
-        ];
-        const hint = channels.length > 0 ? `
-
-IMPORTANT: Reply in the same channel you received the message on. Use the channel parameter: ${channels.map((c) => `"${c}"`).join(", ")}` : "";
-        if (hint) {
-          contentBlocks.push({ type: "text", text: hint });
-        }
-        return {
-          content: contentBlocks
-        };
+        return { content: renderMessages(result.messages, "\n\n") };
       } catch (e) {
         const msg = e.message;
         if (msg === "Unauthorized") {
-          if (currentName) clearStoredToken(client.getBaseUrl(), currentName);
-          currentToken = null;
-          currentName = null;
+          if (session.name) deps.tokenStore.clear(client.getBaseUrl(), session.name);
+          session.token = null;
+          session.name = null;
           return {
             content: [
               {
@@ -30699,14 +30733,14 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
     "List all currently connected users on the hub and available channels.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        const [users, channels] = await Promise.all([client.users(currentToken), client.listChannels(currentToken)]);
+        const [users, channels] = await Promise.all([client.users(session.token), client.listChannels(session.token)]);
         const userText = formatConnectedUsers(users);
         const channelText = channels.length > 0 ? `Channels: ${channels.map((c) => `${c.name} (${c.memberCount} members)`).join(", ")}` : "No channels.";
         return {
@@ -30731,14 +30765,14 @@ ${channelText}`
     "Create a new channel on the hub. You will automatically join the channel.",
     { name: external_exports.string().describe("Channel name (with or without # prefix)") },
     async ({ name }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        const result = await client.createChannel(currentToken, name);
+        const result = await client.createChannel(session.token, name);
         return {
           content: [
             {
@@ -30760,14 +30794,14 @@ ${channelText}`
     "Join an existing channel to send and receive messages in it.",
     { channel: external_exports.string().describe("Channel name to join (e.g. #my-channel)") },
     async ({ channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        await client.joinChannel(currentToken, channel);
+        await client.joinChannel(session.token, channel);
         return {
           content: [
             {
@@ -30789,14 +30823,14 @@ ${channelText}`
     "Leave a channel. You cannot leave #all.",
     { channel: external_exports.string().describe("Channel name to leave") },
     async ({ channel }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        await client.leaveChannel(currentToken, channel);
+        await client.leaveChannel(session.token, channel);
         return {
           content: [
             {
@@ -30821,14 +30855,14 @@ ${channelText}`
       user: external_exports.string().describe("User to invite (e.g. @agent-name)")
     },
     async ({ channel, user }) => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
       try {
-        await client.inviteToChannel(currentToken, channel, user);
+        await client.inviteToChannel(session.token, channel, user);
         return {
           content: [
             {
@@ -30850,26 +30884,30 @@ ${channelText}`
     "Get the current session token and hub URL, plus the path to the shell listener script if this station has one installed. The token and hubUrl are all a listener actually needs \u2014 it is an HTTP client, not an MCP one. waitScript is null when no script is installed, which is the normal case: no installer currently ships one. The listener design also requires a host that wakes the agent when a background task completes; on a strictly turn-based CLI it would detect a message with no way to report it.",
     {},
     async () => {
-      if (!currentToken) {
+      if (!session.token) {
         return {
-          content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
+          content: [{ type: "text", text: NOT_ON_AIR }],
           isError: true
         };
       }
-      const waitScript = resolveWaitScript(path3.dirname(fileURLToPath(import.meta.url)));
+      const local = deps.waitScriptPath !== void 0;
+      const waitScript = local ? deps.waitScriptPath() : null;
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
               hubUrl: client.getBaseUrl(),
-              clientBuild: clientBuild(),
-              token: currentToken,
+              clientBuild: deps.clientBuildLabel,
+              // Deliberately returned to remote stations too: it is what lets a listener
+              // process (Python, so a Windows station can run it) talk HTTP to /poll directly
+              // while the agent's own MCP session stays remote.
+              token: session.token,
               waitScript,
               // Stated rather than left to be inferred from a bare null. A station reading null
               // should stop looking for the file; one reading a path should know the mechanism
               // has a host requirement beyond the file existing.
-              waitScriptNote: waitScript === null ? "No shell listener is installed on this station. Use radio_standby instead; wait_seconds sets how long it blocks." : "Run this with the hubUrl and token above. Requires a host that starts a turn when a background task exits; a strictly turn-based CLI cannot be woken this way."
+              waitScriptNote: !local ? "This station's radio is hosted by the hub, so there is no locally-installed listener script. The hubUrl and token above are all a listener needs; the shell script ships only with a locally-installed radio. Otherwise use radio_standby; wait_seconds sets how long it blocks." : waitScript === null ? "No shell listener is installed on this station. Use radio_standby instead; wait_seconds sets how long it blocks." : "Run this with the hubUrl and token above. Requires a host that starts a turn when a background task exits; a strictly turn-based CLI cannot be woken this way."
             })
           }
         ]
@@ -30877,17 +30915,17 @@ ${channelText}`
     }
   );
   server2.tool("radio_out", "Sign off and disconnect from the Walkie-Talkie hub. Over and out.", {}, async () => {
-    if (!currentToken) {
+    if (!session.token) {
       return {
         content: [{ type: "text", text: "Not registered." }]
       };
     }
     try {
-      await client.unregister(currentToken);
-      const name = currentName;
-      if (name) clearStoredToken(client.getBaseUrl(), name);
-      currentToken = null;
-      currentName = null;
+      await client.unregister(session.token);
+      const name = session.name;
+      if (name) deps.tokenStore.clear(client.getBaseUrl(), name);
+      session.token = null;
+      session.name = null;
       return {
         content: [{ type: "text", text: `Unregistered "${name}". Disconnected from hub.` }]
       };
@@ -30898,6 +30936,13 @@ ${channelText}`
       };
     }
   });
+}
+function createMcpServer(hubUrl2, joinTok, credKind = "join-token") {
+  const server2 = new McpServer({
+    name: "walkie-talkie",
+    version: "1.0.0"
+  });
+  registerRadioTools(server2, createLocalDeps(hubUrl2, joinTok, credKind));
   return server2;
 }
 
@@ -30910,11 +30955,11 @@ for (let i = 0; i < args.length; i++) {
     i++;
   }
 }
-var joinToken2 = process.env.WALKIE_TALKIE_JOIN_TOKEN;
-if (!joinToken2) {
-  console.error("Error: WALKIE_TALKIE_JOIN_TOKEN environment variable is required");
+var credential = resolveCredential();
+if (!credential) {
+  console.error(MISSING_CREDENTIAL_MESSAGE);
   process.exit(1);
 }
-var server = createMcpServer(hubUrl, joinToken2);
+var server = createMcpServer(hubUrl, credential.value, credential.kind);
 var transport = new StdioServerTransport();
 await server.connect(transport);
