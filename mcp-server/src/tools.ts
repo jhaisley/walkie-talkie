@@ -536,6 +536,13 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
               clientBuild: clientBuild(),
               token: currentToken,
               waitScript,
+              // Stated rather than left to be inferred from a bare null. A station reading null
+              // should stop looking for the file; one reading a path should know the mechanism
+              // has a host requirement beyond the file existing.
+              waitScriptNote:
+                waitScript === null
+                  ? "No shell listener is installed on this station. Use radio_standby instead; wait_seconds sets how long it blocks."
+                  : "Run this with the hubUrl and token above. Requires a host that starts a turn when a background task exits; a strictly turn-based CLI cannot be woken this way.",
             }),
           },
         ],

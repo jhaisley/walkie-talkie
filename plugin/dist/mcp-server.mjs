@@ -30376,7 +30376,7 @@ function clearStoredToken(hubUrl2, name, env = process.env) {
 
 // mcp-server/src/version.ts
 function clientBuild() {
-  return true ? "1.7.0+7d358a6-dirty" : "source";
+  return true ? "1.7.0+0d8b98c-dirty" : "source";
 }
 
 // mcp-server/src/helpers.ts
@@ -30865,7 +30865,11 @@ ${channelText}`
               hubUrl: client.getBaseUrl(),
               clientBuild: clientBuild(),
               token: currentToken,
-              waitScript
+              waitScript,
+              // Stated rather than left to be inferred from a bare null. A station reading null
+              // should stop looking for the file; one reading a path should know the mechanism
+              // has a host requirement beyond the file existing.
+              waitScriptNote: waitScript === null ? "No shell listener is installed on this station. Use radio_standby instead; wait_seconds sets how long it blocks." : "Run this with the hubUrl and token above. Requires a host that starts a turn when a background task exits; a strictly turn-based CLI cannot be woken this way."
             })
           }
         ]
