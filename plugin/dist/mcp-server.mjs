@@ -3222,8 +3222,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3422,8 +3422,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -6785,12 +6785,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs4, exportName) {
       var _a2;
       var _b;
       (_a2 = (_b = ajv.opts.code).formats) !== null && _a2 !== void 0 ? _a2 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs4[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7568,10 +7568,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7954,11 +7954,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -8141,7 +8141,7 @@ function formatError(error48, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error48, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error49, path3 = []) => {
+  const processError = (error49, path4 = []) => {
     var _a2, _b;
     for (const issue2 of error49.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
@@ -8151,7 +8151,7 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
       } else if (issue2.code === "invalid_element") {
         processError({ issues: issue2.issues }, issue2.path);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8183,8 +8183,8 @@ function treeifyError(error48, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path3 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path3) {
+  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path4) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -20161,13 +20161,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path3 = ref.slice(1).split("/").filter(Boolean);
-  if (path3.length === 0) {
+  const path4 = ref.slice(1).split("/").filter(Boolean);
+  if (path4.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path3[0] === defsKey) {
-    const key = path3[1];
+  if (path4[0] === defsKey) {
+    const key = path4[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -22177,10 +22177,10 @@ var StdioServerTransport = class {
 };
 
 // mcp-server/src/tools.ts
-import fs2 from "node:fs";
+import fs3 from "node:fs";
 import http2 from "node:http";
 import https2 from "node:https";
-import path2 from "node:path";
+import path3 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/zod/v3/helpers/util.js
@@ -22542,8 +22542,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -22658,11 +22658,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -30099,6 +30099,26 @@ var EMPTY_COMPLETION_RESULT = {
 // mcp-server/src/client.ts
 import http from "node:http";
 import https from "node:https";
+var DEFAULT_POLL_WAIT_MS = 3e4;
+var DEFAULT_MAX_POLL_WAIT_MS = 3e4;
+var HUB_MARGIN_MS = 5e3;
+function envMs(raw, fallback) {
+  if (raw === void 0 || raw === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+function resolvePollWaitMs(env = process.env) {
+  return envMs(env.WALKIE_TALKIE_POLL_WAIT_MS, DEFAULT_POLL_WAIT_MS);
+}
+function resolveMaxPollWaitMs(env = process.env) {
+  return Math.max(envMs(env.WALKIE_TALKIE_MAX_POLL_WAIT_MS, DEFAULT_MAX_POLL_WAIT_MS), resolvePollWaitMs(env));
+}
+function clampPollWaitMs(requestedMs, env = process.env) {
+  if (requestedMs === void 0 || !Number.isFinite(requestedMs) || requestedMs <= 0) {
+    return resolvePollWaitMs(env);
+  }
+  return Math.min(Math.max(requestedMs, 1e3), resolveMaxPollWaitMs(env));
+}
 var HubClient = class {
   baseUrl;
   constructor(hubUrl2) {
@@ -30200,20 +30220,28 @@ var HubClient = class {
    * Bounded long-poll for radio_standby. timeoutMs MUST stay well under the MCP
    * client's tool-call timeout: this runs as an MCP tool, and if the call blocks
    * longer than that timeout the whole MCP server is dropped as unresponsive
-   * ("No such tool available"). The hub holds /poll open for up to an hour, so a
-   * too-long value here meant radio_standby could hang ~an hour and take the MCP
-   * connection down with it. 30s matches the tool's documented "blocks up to 30
-   * seconds" and stays under the default 60s MCP timeout.
+   * ("No such tool available"). 30s matches the tool's documented "blocks up to
+   * 30 seconds" and stays under the default 60s MCP timeout.
+   *
+   * It is also the ceiling for the hub's own idle-poll timeout, which MUST stay
+   * strictly below this value (see resolvePollTimeoutMs in hub/src/polling.ts).
+   * Whichever side ends an idle poll first decides how it reads: hub-first is a
+   * clean 204, client-first is a socket abort the hub scores as a crashed agent.
+   * If you raise this, raise the hub's timeout to match -- never the reverse.
    *
    * A timeout with no message is the NORMAL "no messages" outcome, not an error,
    * so we resolve it to null (radio_standby then reports "no new messages")
    * rather than throwing — throwing would surface as a tool error / dropped call.
    */
-  async poll(token, timeoutMs = 3e4) {
+  async poll(token, timeoutMs = resolvePollWaitMs()) {
     try {
       const res = await this.request({
         method: "GET",
-        path: "/poll",
+        // Ask the hub for a window HUB_MARGIN_MS shorter than our own abort. The hub answering
+        // first is what keeps an idle poll from looking like a dropped connection: a
+        // client-side abort fires the hub's disconnect path, which marks the station offline
+        // and arms the stale-registration grace that reaped idle stations across the fleet.
+        path: `/poll?wait=${Math.max(1e3, timeoutMs - HUB_MARGIN_MS)}`,
         token,
         timeoutMs
       });
@@ -30307,13 +30335,52 @@ var HubClient = class {
   }
 };
 
-// mcp-server/src/helpers.ts
+// mcp-server/src/token-store.ts
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-function resolveWaitScript(thisDir, exists = fs.existsSync) {
+function stateDir(env = process.env) {
+  if (env.WALKIE_TALKIE_STATE_DIR) return env.WALKIE_TALKIE_STATE_DIR;
+  const base = env.XDG_STATE_HOME || (env.LOCALAPPDATA ?? path.join(os.homedir(), ".local", "state"));
+  return path.join(base, "walkie-talkie");
+}
+function tokenKey(hubUrl2, name) {
+  const safe = (v) => v.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 64);
+  return `${safe(hubUrl2)}.${safe(name)}.token`;
+}
+function readStoredToken(hubUrl2, name, env = process.env) {
+  try {
+    const v = fs.readFileSync(path.join(stateDir(env), tokenKey(hubUrl2, name)), "utf8").trim();
+    return v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeStoredToken(hubUrl2, name, token, env = process.env) {
+  try {
+    const dir = stateDir(env);
+    fs.mkdirSync(dir, { recursive: true });
+    const file2 = path.join(dir, tokenKey(hubUrl2, name));
+    const tmp = `${file2}.tmp`;
+    fs.writeFileSync(tmp, token, { mode: 384 });
+    fs.renameSync(tmp, file2);
+  } catch {
+  }
+}
+function clearStoredToken(hubUrl2, name, env = process.env) {
+  try {
+    fs.unlinkSync(path.join(stateDir(env), tokenKey(hubUrl2, name)));
+  } catch {
+  }
+}
+
+// mcp-server/src/helpers.ts
+import fs2 from "node:fs";
+import path2 from "node:path";
+function resolveWaitScript(thisDir, exists = fs2.existsSync) {
   const candidates = [
-    path.resolve(thisDir, "..", "bin", "radio-wait.sh"),
-    path.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
+    path2.resolve(thisDir, "..", "bin", "radio-wait.sh"),
+    path2.resolve(thisDir, "..", "..", "plugin", "bin", "radio-wait.sh")
   ];
   return candidates.find(exists) ?? candidates[0];
 }
@@ -30332,7 +30399,7 @@ var MIME_TYPES = {
   ".webp": "image/webp"
 };
 function getMimeType(source) {
-  const ext = path2.extname(source).toLowerCase();
+  const ext = path3.extname(source).toLowerCase();
   return MIME_TYPES[ext] ?? "image/png";
 }
 function fetchUrl(url2) {
@@ -30370,21 +30437,26 @@ function createMcpServer(hubUrl2, joinTok) {
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
     { name: external_exports.string().describe("Your display name for this session") },
     async ({ name }) => {
+      const priorToken = currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? void 0;
       try {
-        const result = await client.register(name, joinToken, currentToken ?? void 0);
+        const result = await client.register(name, joinToken, priorToken);
         currentToken = result.token;
         currentName = result.name;
+        writeStoredToken(client.getBaseUrl(), result.name, result.token);
+        const reclaimed = priorToken !== void 0 && priorToken !== currentToken;
         return {
           content: [
             {
               type: "text",
-              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.`
+              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` + (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : "")
             }
           ]
         };
       } catch (e) {
+        const msg = e.message;
+        if (msg.includes("already registered")) clearStoredToken(client.getBaseUrl(), name);
         return {
-          content: [{ type: "text", text: `Registration failed: ${e.message}` }],
+          content: [{ type: "text", text: `Registration failed: ${msg}` }],
           isError: true
         };
       }
@@ -30449,7 +30521,7 @@ function createMcpServer(hubUrl2, joinTok) {
         if (source.startsWith("http://") || source.startsWith("https://")) {
           buf = await fetchUrl(source);
         } else {
-          buf = fs2.readFileSync(source);
+          buf = fs3.readFileSync(source);
         }
         const data = buf.toString("base64");
         const mimeType = getMimeType(source);
@@ -30536,9 +30608,9 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
   );
   server2.tool(
     "radio_standby",
-    "Stand by for incoming messages using long polling. Blocks up to 30 seconds. Returns received messages or empty if timeout.",
-    {},
-    async () => {
+    "Stand by for incoming messages using long polling. Returns as soon as a message arrives, or empty when the wait window elapses. Optionally pass wait_seconds to choose the window: use a long one (e.g. 1200 = 20 minutes) when you expect to be idle or are about to start long running work, and a short one when you are mid-conversation and expect a prompt reply. A longer window does NOT delay delivery \u2014 the hub answers the moment a message is routed \u2014 it only reduces how often an empty return wakes you, which is the main cost of sitting idle. Values above this install's configured ceiling are clamped rather than rejected.",
+    { wait_seconds: external_exports.number().positive().optional() },
+    async ({ wait_seconds }) => {
       if (!currentToken) {
         return {
           content: [{ type: "text", text: "Not on the air. Use radio_join first." }],
@@ -30546,7 +30618,7 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
         };
       }
       try {
-        const result = await client.poll(currentToken);
+        const result = await client.poll(currentToken, clampPollWaitMs(wait_seconds ? wait_seconds * 1e3 : void 0));
         if (!result || result.messages.length === 0) {
           return {
             content: [{ type: "text", text: "No new messages (poll timed out). Try again." }]
@@ -30594,6 +30666,7 @@ IMPORTANT: Reply in the same channel you received the message on. Use the channe
       } catch (e) {
         const msg = e.message;
         if (msg === "Unauthorized") {
+          if (currentName) clearStoredToken(client.getBaseUrl(), currentName);
           currentToken = null;
           currentName = null;
           return {
@@ -30775,7 +30848,7 @@ ${channelText}`
           isError: true
         };
       }
-      const waitScript = resolveWaitScript(path2.dirname(fileURLToPath(import.meta.url)));
+      const waitScript = resolveWaitScript(path3.dirname(fileURLToPath(import.meta.url)));
       return {
         content: [
           {
@@ -30799,6 +30872,7 @@ ${channelText}`
     try {
       await client.unregister(currentToken);
       const name = currentName;
+      if (name) clearStoredToken(client.getBaseUrl(), name);
       currentToken = null;
       currentName = null;
       return {

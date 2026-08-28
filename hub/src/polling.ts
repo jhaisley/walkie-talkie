@@ -38,6 +38,37 @@ export function resolvePollTimeoutMs(env: NodeJS.ProcessEnv = process.env): numb
 }
 
 const POLL_TIMEOUT_MS = resolvePollTimeoutMs();
+
+/**
+ * Ceiling for a client-requested poll window (WALKIE_TALKIE_MAX_POLL_WINDOW_MS, default 15min).
+ * A client asks for its own window via ?wait=<ms> because the safe value is a property of the
+ * CLIENT, not the hub: the window must sit below that client's MCP tool-call timeout, and those
+ * differ per CLI (Claude Code tolerates ~30min; other clients default far lower). A single
+ * hub-wide constant would have to be short enough for the shortest client in the fleet, which
+ * would force every long-poll-capable station back to a 25s cycle and the idle-turn cost that
+ * comes with it. Clamping here keeps a malformed or hostile value from parking a socket forever.
+ */
+const DEFAULT_MAX_POLL_WINDOW_MS = 900_000;
+const MIN_POLL_WINDOW_MS = 1_000;
+
+export function resolveMaxPollWindowMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.WALKIE_TALKIE_MAX_POLL_WINDOW_MS;
+  if (raw === undefined || raw === "") return DEFAULT_MAX_POLL_WINDOW_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_MAX_POLL_WINDOW_MS;
+  return n;
+}
+
+/**
+ * The window to hold this poll open for. An absent or unusable `wait` falls back to the hub
+ * default, so a client that knows nothing about this parameter behaves exactly as before.
+ */
+export function resolvePollWindowMs(requested: string | null, env: NodeJS.ProcessEnv = process.env): number {
+  if (requested === null || requested === "") return resolvePollTimeoutMs(env);
+  const n = Number(requested);
+  if (!Number.isFinite(n) || n <= 0) return resolvePollTimeoutMs(env);
+  return Math.min(Math.max(n, MIN_POLL_WINDOW_MS), resolveMaxPollWindowMs(env));
+}
 const pendingPolls = new Map<string, PendingPoll>();
 
 // Track users explicitly detected as offline (poll connection dropped).
@@ -93,7 +124,13 @@ export function hasActivePoll(userName: string): boolean {
  * with the same cursor. When `cursor` is undefined, the legacy drain path (at-most-once) is
  * used unchanged, so any client that doesn't send a cursor keeps its prior behavior.
  */
-export function addPoll(userName: string, req: IncomingMessage, res: ServerResponse, cursor?: number): void {
+export function addPoll(
+  userName: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  cursor?: number,
+  windowMs: number = POLL_TIMEOUT_MS,
+): void {
   removePoll(userName);
   lastSeen.set(userName, Date.now());
 
@@ -101,10 +138,10 @@ export function addPoll(userName: string, req: IncomingMessage, res: ServerRespo
 
   const timer = setTimeout(() => {
     pendingPolls.delete(userName);
-    console.log(`[poll-timeout] ${userName} (no messages after ${POLL_TIMEOUT_MS / 1000}s)`);
+    console.log(`[poll-timeout] ${userName} (no messages after ${windowMs / 1000}s)`);
     res.writeHead(204);
     res.end();
-  }, POLL_TIMEOUT_MS);
+  }, windowMs);
 
   pendingPolls.set(userName, { userName, res, timer, cursor });
 

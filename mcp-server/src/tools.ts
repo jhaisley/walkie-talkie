@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { HubClient } from "./client.js";
+import { clampPollWaitMs, HubClient } from "./client.js";
+import { clearStoredToken, readStoredToken, writeStoredToken } from "./token-store.js";
 import { formatConnectedUsers, resolveWaitScript } from "./helpers.js";
 
 const MIME_TYPES: Record<string, string> = {
@@ -62,21 +63,34 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     "Join the Walkie-Talkie hub with a display name. You must join before using other radio tools.",
     { name: z.string().describe("Your display name for this session") },
     async ({ name }) => {
+      // Reclaim path: prefer the live token, else the one persisted by a previous process. The
+      // hub lets the proven owner take its own registration back, so a restarted station
+      // recovers its callsign immediately instead of waiting to be reaped out of it.
+      const priorToken = currentToken ?? readStoredToken(client.getBaseUrl(), name) ?? undefined;
       try {
-        const result = await client.register(name, joinToken, currentToken ?? undefined);
+        const result = await client.register(name, joinToken, priorToken);
         currentToken = result.token;
         currentName = result.name;
+        writeStoredToken(client.getBaseUrl(), result.name, result.token);
+        const reclaimed = priorToken !== undefined && priorToken !== currentToken;
         return {
           content: [
             {
               type: "text" as const,
-              text: `Registered as "${currentName}". You are now in #all. You can now send and receive messages.`,
+              text:
+                `Registered as "${currentName}". You are now in #all. You can now send and receive messages.` +
+                (reclaimed ? " (Reclaimed a previous registration for this callsign.)" : ""),
             },
           ],
         };
       } catch (e) {
+        const msg = (e as Error).message;
+        // A held name we could not prove ownership of means our stored token is no longer the
+        // one the hub has. Drop it so the next attempt is a clean first-time join rather than
+        // a retry with a credential we now know is wrong.
+        if (msg.includes("already registered")) clearStoredToken(client.getBaseUrl(), name);
         return {
-          content: [{ type: "text" as const, text: `Registration failed: ${(e as Error).message}` }],
+          content: [{ type: "text" as const, text: `Registration failed: ${msg}` }],
           isError: true,
         };
       }
@@ -241,9 +255,15 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
 
   server.tool(
     "radio_standby",
-    "Stand by for incoming messages using long polling. Blocks up to 30 seconds. Returns received messages or empty if timeout.",
-    {},
-    async () => {
+    "Stand by for incoming messages using long polling. Returns as soon as a message arrives, or " +
+      "empty when the wait window elapses. Optionally pass wait_seconds to choose the window: use a " +
+      "long one (e.g. 1200 = 20 minutes) when you expect to be idle or are about to start long " +
+      "running work, and a short one when you are mid-conversation and expect a prompt reply. A " +
+      "longer window does NOT delay delivery — the hub answers the moment a message is routed — it " +
+      "only reduces how often an empty return wakes you, which is the main cost of sitting idle. " +
+      "Values above this install's configured ceiling are clamped rather than rejected.",
+    { wait_seconds: z.number().positive().optional() },
+    async ({ wait_seconds }) => {
       if (!currentToken) {
         return {
           content: [{ type: "text" as const, text: "Not on the air. Use radio_join first." }],
@@ -251,7 +271,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
         };
       }
       try {
-        const result = await client.poll(currentToken);
+        const result = await client.poll(currentToken, clampPollWaitMs(wait_seconds ? wait_seconds * 1000 : undefined));
         if (!result || result.messages.length === 0) {
           return {
             content: [{ type: "text" as const, text: "No new messages (poll timed out). Try again." }],
@@ -305,6 +325,7 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
       } catch (e) {
         const msg = (e as Error).message;
         if (msg === "Unauthorized") {
+          if (currentName) clearStoredToken(client.getBaseUrl(), currentName);
           currentToken = null;
           currentName = null;
           return {
@@ -519,6 +540,9 @@ export function createMcpServer(hubUrl: string, joinTok: string): McpServer {
     try {
       await client.unregister(currentToken);
       const name = currentName;
+      // A deliberate sign-off ends the claim: keeping the token would let a later process
+      // silently take a callsign the operator intended to release.
+      if (name) clearStoredToken(client.getBaseUrl(), name);
       currentToken = null;
       currentName = null;
       return {
