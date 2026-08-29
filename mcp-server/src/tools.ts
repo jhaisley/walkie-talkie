@@ -103,10 +103,29 @@ export function registerRadioTools(server: McpServer, deps: RadioDeps): void {
         };
       } catch (e) {
         const msg = (e as Error).message;
-        // A held name we could not prove ownership of means our stored token is no longer the
-        // one the hub has. Drop it so the next attempt is a clean first-time join rather than
-        // a retry with a credential we now know is wrong.
-        if (msg.includes("already registered")) deps.tokenStore.clear(client.getBaseUrl(), name);
+        // A 409 "already registered" is NOT evidence the stored token is dead. It fires whenever
+        // the hub's reclaim gate refuses — including when a live incumbent still holds the name
+        // and this join simply lost the race, which is exactly what a fleet cutover produces.
+        // Clearing here destroyed a valid credential one move before it was needed, and the
+        // station's doctrinal next step (join again) then had nothing to reclaim with. The one
+        // signal that a token is genuinely dead is the hub answering 401 to that token, and
+        // radio_standby already clears on that. So on a 409: keep the file, report the race, and
+        // let the caller decide — retry once the incumbent drains, or supply a fresh token.
+        // Found live on the JDESK cutover by five stations reading the bundle independently.
+        if (msg.includes("already registered")) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Registration failed: ${msg}. Your stored token was kept — a name held by a live session ` +
+                  "is not proof your credential is dead. If you are reclaiming your own callsign after a " +
+                  "restart, wait for the previous session to drain and try again; do not pick a new name.",
+              },
+            ],
+            isError: true,
+          };
+        }
         return {
           content: [{ type: "text" as const, text: `Registration failed: ${msg}` }],
           isError: true,

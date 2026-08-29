@@ -397,6 +397,29 @@ const handleSend: RouteHandler = async (req, res, userName) => {
   }
 };
 
+/**
+ * GET /whoami — the one authenticated endpoint with NO side effects. Exists so a station can test
+ * whether a candidate token is still live BEFORE spending a join on it.
+ *
+ * Nothing else fits: /users is public (answers 200 to no auth, bogus auth and real auth alike —
+ * a station testing a token there got 200 and reported a dead token as valid); /inbox is
+ * authenticated but DRAINS the queue, so a probe consumes real messages; and every other route
+ * mutates. This touches no queue, no poll, and deliberately does not stamp lastSeen — a probe
+ * must not manufacture liveness that a fleet manager might read as "the station is polling".
+ *
+ * 401 means precisely "the hub does not hold this token"; 200 means "it does, and here is who
+ * it belongs to". Both are safe to act on. Found necessary during the JDESK cutover, where
+ * stations needed to distinguish a stale token file from a live one without risking the clear.
+ */
+const handleWhoami: RouteHandler = async (_req, res, userName) => {
+  sendJson(res, 200, {
+    name: userName,
+    role: getUserRole(userName!) ?? "agent",
+    online: isOnline(userName!),
+    hasActivePoll: hasActivePoll(userName!),
+  });
+};
+
 const handleInbox: RouteHandler = async (_req, res, userName) => {
   const messages = drainQueue(userName!);
   sendJson(res, 200, { messages });
@@ -1139,6 +1162,7 @@ const protectedRoutes: Record<string, { method: string; handler: RouteHandler }>
   "/send": { method: "POST", handler: handleSend },
   "/poll": { method: "GET", handler: handlePoll },
   "/inbox": { method: "GET", handler: handleInbox },
+  "/whoami": { method: "GET", handler: handleWhoami },
   "/unregister": { method: "POST", handler: handleUnregister },
   "/channel-create": { method: "POST", handler: handleChannelCreate },
   "/channel-join": { method: "POST", handler: handleChannelJoin },
