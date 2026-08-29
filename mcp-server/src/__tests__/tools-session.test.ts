@@ -274,6 +274,24 @@ describe("radio_standby", () => {
     expect(text(res)).toBe("No new messages (poll timed out). Try again.");
   });
 
+  it("KEEPS the stored token when a join loses a reclaim race (409), unlike a 401", async () => {
+    // The contrast with the test below is the whole point. A 401 means the hub rejected THIS
+    // token, so it is dead and clearing is right. A 409 "already registered" means the hub's
+    // reclaim gate refused — very often because a live incumbent still holds the name and this
+    // join simply raced it, which is exactly what a fleet cutover produces. The old code cleared
+    // on 409 too, destroying a valid credential one move before the station needed it to reclaim.
+    const clear = vi.fn();
+    const a = makeFake({ tokenStore: { read: () => "tok-alpha-still-good", write: () => {}, clear } });
+    (a.deps.client as unknown as { register: unknown }).register = async () => {
+      throw new Error('User "alpha" is already registered');
+    };
+    const res = await a.tools.get("radio_join")!({ name: "alpha" });
+    expect(res.isError).toBe(true);
+    expect(clear).not.toHaveBeenCalled();
+    expect(text(res)).toContain("stored token was kept");
+    expect(text(res)).toContain("do not pick a new name");
+  });
+
   it("clears the session and the stored token when the hub says the registration expired", async () => {
     const clear = vi.fn();
     const a = makeFake({ tokenStore: { read: () => null, write: () => {}, clear } });

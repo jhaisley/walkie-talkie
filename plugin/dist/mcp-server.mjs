@@ -30414,7 +30414,7 @@ function clearStoredToken(hubUrl2, name, env = process.env) {
 
 // mcp-server/src/version.ts
 function clientBuild() {
-  return true ? "1.7.0+6844207-dirty" : "source";
+  return true ? "1.7.0+36f6dc1-dirty" : "source";
 }
 
 // mcp-server/src/local-deps.ts
@@ -30522,7 +30522,17 @@ function registerRadioTools(server2, deps) {
         };
       } catch (e) {
         const msg = e.message;
-        if (msg.includes("already registered")) deps.tokenStore.clear(client.getBaseUrl(), name);
+        if (msg.includes("already registered")) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Registration failed: ${msg}. Your stored token was kept \u2014 a name held by a live session is not proof your credential is dead. If you are reclaiming your own callsign after a restart, wait for the previous session to drain and try again; do not pick a new name.`
+              }
+            ],
+            isError: true
+          };
+        }
         return {
           content: [{ type: "text", text: `Registration failed: ${msg}` }],
           isError: true
