@@ -5,7 +5,7 @@ import { initDB } from "../../db.js";
 import { resetPollingState } from "../../polling.js";
 import { restoreFleet } from "../../restore.js";
 import { resetRouterState } from "../../router.js";
-import { createHubServer, resetEnrollFailureState } from "../../server.js";
+import { createHubServer, resetEnrollFailureState, seedOpsFromEnv } from "../../server.js";
 
 export interface TestContext {
   baseUrl: string;
@@ -47,6 +47,8 @@ export async function startTestServer(options: TestServerOptions = {}): Promise<
   process.env.WALKIE_TALKIE_DB_PATH = ":memory:";
   initDB();
   initGeneralChannel();
+
+  seedOpsFromEnv();
 
   const server = createHubServer(0, ADMIN_TOKEN, JOIN_TOKEN);
 

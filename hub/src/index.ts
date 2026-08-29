@@ -10,7 +10,7 @@ import { HUB_SHUTDOWN_NOTICE } from "./messages.js";
 import { closeAllPolls } from "./polling.js";
 import { restoreFleet } from "./restore.js";
 import { enqueueAndDeliver, ensureQueue } from "./router.js";
-import { createHubServer } from "./server.js";
+import { createHubServer, seedOpsFromEnv } from "./server.js";
 
 const port = parseInt(process.env.PORT ?? "9559", 10);
 const hubHost = process.env.HUB_HOST ?? "127.0.0.1";
@@ -29,6 +29,7 @@ if (!adminToken) {
 
 initDB();
 initGeneralChannel();
+seedOpsFromEnv();
 // Rehydrate the fleet BEFORE the server can accept a request, so no station ever sees the
 // half-restored state (authenticated but with no channel memberships).
 restoreFleet();
