@@ -15,9 +15,11 @@ import {
   unregisterUser,
 } from "./auth.js";
 import {
+  channelExists,
   ensureChannelMembership,
   getChannelMemberCounts,
   getChannelMembers,
+  getUserChannels,
   isChannelMember,
   joinChannel,
   leaveChannel,
@@ -39,9 +41,13 @@ import {
   dbGetRecentMessages,
   dbGetUnreadCounts,
   dbGetUserChannels,
+  dbGrantOp,
+  dbIsOp,
   dbListAgentConfigs,
   dbListChannels,
   dbListStationKeys,
+  dbOpsCount,
+  dbRevokeOp,
   dbTouchStationKey,
   dbUpdateAgentConfig,
   dbUpdateReadCursor,
@@ -343,10 +349,9 @@ export function sendStationMessage(
   // either handler alone would miss the other transport. "wall" itself is exempt (it IS the
   // announcement identity), and the operator is unaffected structurally — /admin-send calls
   // routeMessage directly. "*" on the allow-list lifts the restriction entirely.
-  const wallAllowed = resolveWallAllowed();
-  if (normalizeChannel(ch) === "#all" && from !== "wall" && !wallAllowed.has("*") && !wallAllowed.has(from)) {
+  if (normalizeChannel(ch) === "#all" && from !== "wall" && !isOp(from)) {
     throw new Error(
-      `#all is announcement-only. Use a purpose channel (radio_channels lists them; radio_channel_create makes one), or ask the operator to add "${from}" to WALKIE_TALKIE_WALL_ALLOWED.`,
+      `#all is announcement-only. Use a purpose channel (radio_channels lists them; radio_channel_create makes one), or ask the operator to /op "${from}".`,
     );
   }
   const message = routeMessage(from, to, content, ch, image);
@@ -530,6 +535,80 @@ const handleKick: RouteHandler = async (req, res) => {
   }
 };
 
+/**
+ * /kill — terminate a station: delete its registration AND close any hosted MCP session it
+ * holds. This is what "kick" always did; the name implied a temporary removal. /kick stays as a
+ * deprecated alias so existing tooling survives the rename; /admin-channel-kick is the
+ * channel-scoped removal "kick" should mean.
+ */
+const handleKill: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { name?: string };
+  if (!body.name) return sendError(res, 400, "Missing 'name' field");
+  if (kickUser(body.name)) sendJson(res, 200, { ok: true, killed: body.name });
+  else sendError(res, 404, `User "${body.name}" not found`);
+};
+/** Deprecated alias for /kill. Keeps the historical `kicked` key so existing tooling is unbroken. */
+const handleKickAlias: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { name?: string };
+  if (!body.name) return sendError(res, 400, "Missing 'name' field");
+  if (kickUser(body.name)) sendJson(res, 200, { ok: true, kicked: body.name });
+  else sendError(res, 404, `User "${body.name}" not found`);
+};
+
+/** /admin-channel-kick — remove one station from one channel. Moderation, not termination. */
+const handleAdminChannelKick: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { channel?: string; name?: string };
+  if (!body.channel || !body.name) return sendError(res, 400, "Missing 'channel' or 'name' field");
+  const ch = normalizeChannel(body.channel);
+  if (ch === "#all") return sendError(res, 400, "Cannot kick from #all; use /kill to remove a station entirely");
+  if (!channelExists(ch)) return sendError(res, 404, `Channel "${ch}" does not exist`);
+  if (!isChannelMember(ch, body.name)) return sendError(res, 404, `"${body.name}" is not in ${ch}`);
+  leaveChannel(ch, body.name);
+  broadcast({ type: "channel_leave", channel: ch, userName: body.name, timestamp: Date.now() });
+  console.log(`[channel-kick] ${body.name} removed from ${ch}`);
+  sendJson(res, 200, { ok: true, channel: ch, kicked: body.name });
+};
+
+/** /op and /deop — grant or revoke operator privilege. Admin-token-only by design. */
+const handleOp: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { name?: string };
+  if (!body.name) return sendError(res, 400, "Missing 'name' field");
+  if (isReservedName(body.name)) return sendError(res, 400, `"${body.name}" is not a station`);
+  const changed = dbGrantOp(body.name, "operator");
+  console.log(`[op] ${body.name}${changed ? "" : " (already op)"}`);
+  sendJson(res, 200, { ok: true, op: body.name, changed });
+};
+const handleDeop: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { name?: string };
+  if (!body.name) return sendError(res, 400, "Missing 'name' field");
+  const changed = dbRevokeOp(body.name);
+  console.log(`[deop] ${body.name}${changed ? "" : " (was not op)"}`);
+  sendJson(res, 200, { ok: true, deop: body.name, changed });
+};
+
+/**
+ * /whois — everything the hub knows about one station in one read, including the fields the
+ * fleet had to assemble from three endpoints and a log tonight: liveness (online /
+ * hasActivePoll / lastSeen), whether the registration is UNCLAIMED (restart-restored, never
+ * re-authenticated — the "held, dead, not aging out" state), op status, and channels.
+ */
+const handleWhois: RouteHandler = async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const name = url.searchParams.get("name") ?? "";
+  if (!name) return sendError(res, 400, "Missing 'name' query parameter");
+  if (!isUserRegistered(name)) return sendError(res, 404, `"${name}" is not registered`);
+  sendJson(res, 200, {
+    name,
+    role: getUserRole(name) ?? "agent",
+    online: isOnline(name),
+    hasActivePoll: hasActivePoll(name),
+    lastSeen: getLastSeen(name),
+    unclaimed: isUnclaimed(name),
+    op: isOp(name),
+    channels: getUserChannels(name),
+  });
+};
+
 const handleKickAll: RouteHandler = async (_req, res) => {
   const agents = [...getRegisteredUsers()].filter((name) => name !== "operator");
   for (const name of agents) {
@@ -539,20 +618,28 @@ const handleKickAll: RouteHandler = async (_req, res) => {
 };
 
 /**
- * Callsigns allowed to issue wall announcements and broadcast into #all
- * (WALKIE_TALKIE_WALL_ALLOWED, comma-separated). Empty/unset means no station may — the admin
- * token alone can, which is what deploy.sh uses. The single value "*" allows every station:
- * the operator's off switch for the whole restriction, and what the test harness defaults to
- * so suites exercising broadcast mechanics are not also testing the gate.
+ * Operator privilege. Gates /wall, sending into #all, channel create/invite/kick — everything a
+ * moderator does. NOT /kill and NOT /op: those stay admin-token-only, or one compromised op'd
+ * station could terminate the fleet or op everyone.
+ *
+ * Persisted in the ops table so a grant survives a restart and changes at runtime via /op and
+ * /deop. WALKIE_TALKIE_WALL_ALLOWED is read ONCE, at boot, only if the table is empty — it
+ * seeds the initial set and then stops being the source of truth. "*" means every station.
  */
-export function resolveWallAllowed(env: NodeJS.ProcessEnv = process.env): Set<string> {
-  const raw = env.WALKIE_TALKIE_WALL_ALLOWED ?? "";
-  return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0),
-  );
+let opsWildcard = false;
+export function seedOpsFromEnv(env: NodeJS.ProcessEnv = process.env): void {
+  const raw = (env.WALKIE_TALKIE_WALL_ALLOWED ?? "").trim();
+  opsWildcard = raw === "*";
+  if (opsWildcard || dbOpsCount() > 0) return;
+  for (const name of raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)) {
+    dbGrantOp(name, "seed:WALKIE_TALKIE_WALL_ALLOWED");
+  }
+}
+export function isOp(callsign: string): boolean {
+  return opsWildcard || dbIsOp(callsign);
 }
 
 /**
@@ -586,8 +673,7 @@ async function handleWallRequest(req: IncomingMessage, res: ServerResponse, admi
     if (!name) {
       return sendError(res, 401, "Wall requires the admin token or a registered station's token");
     }
-    const allowed = resolveWallAllowed();
-    if (!allowed.has("*") && !allowed.has(name)) {
+    if (!isOp(name)) {
       return sendError(res, 403, `Station "${name}" is not authorized to wall`);
     }
     issuer = name;
@@ -1140,8 +1226,13 @@ const joinRoutes: Record<string, { method: string; handler: RouteHandler }> = {
 };
 
 const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
-  "/kick": { method: "POST", handler: handleKick },
+  "/kill": { method: "POST", handler: handleKill },
+  "/kick": { method: "POST", handler: handleKickAlias }, // deprecated alias for /kill
   "/kick-all": { method: "POST", handler: handleKickAll },
+  "/admin-channel-kick": { method: "POST", handler: handleAdminChannelKick },
+  "/op": { method: "POST", handler: handleOp },
+  "/deop": { method: "POST", handler: handleDeop },
+  "/whois": { method: "GET", handler: handleWhois },
   "/admin-send": { method: "POST", handler: handleAdminSend },
   "/admin-channel-create": { method: "POST", handler: handleAdminChannelCreate },
   "/admin-channel-delete": { method: "POST", handler: handleAdminChannelDelete },

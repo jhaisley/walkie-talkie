@@ -70,7 +70,7 @@ describe("POST /wall", () => {
     expect(res.status).toBe(404);
     const err = ((await res.json()) as { error: string }).error;
     expect(err).toContain("announcement-only");
-    expect(err).toContain("WALKIE_TALKIE_WALL_ALLOWED");
+    expect(err).toContain("/op");
   });
 
   it("blocks a DM inside #all too — it lands in the shared history, so it is not private", async () => {

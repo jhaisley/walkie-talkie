@@ -195,6 +195,17 @@ export function initDB(): void {
     )
   `);
 
+  // Operator grants. A persisted privilege flag, deliberately NOT a third UserRole: role is
+  // transport/identity (agent vs bridge) and a bridge can be op'd too. Persisted so a grant
+  // survives a hub restart — the env-var allow-list it replaces needed a redeploy to change.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ops (
+      callsign   TEXT PRIMARY KEY,
+      granted_at INTEGER NOT NULL,
+      granted_by TEXT NOT NULL
+    )
+  `);
+
   // Seed #all if it doesn't exist
   const existing = db.prepare("SELECT name FROM channels WHERE name = ?").get("#all");
   if (!existing) {
@@ -715,4 +726,33 @@ export function dbRedeemEnrollment(
     return { key, revokedPredecessorId: prior?.id ?? null };
   });
   return redeem() as { key: StationKeyRow; revokedPredecessorId: string | null } | null;
+}
+
+// ---- operator grants ------------------------------------------------------------------------
+
+export function dbIsOp(callsign: string): boolean {
+  return db.prepare("SELECT 1 FROM ops WHERE callsign = ?").get(callsign) !== undefined;
+}
+
+export function dbListOps(): Array<{ callsign: string; granted_at: number; granted_by: string }> {
+  return db.prepare("SELECT callsign, granted_at, granted_by FROM ops ORDER BY granted_at").all() as Array<{
+    callsign: string;
+    granted_at: number;
+    granted_by: string;
+  }>;
+}
+
+export function dbGrantOp(callsign: string, grantedBy: string): boolean {
+  const r = db
+    .prepare("INSERT OR IGNORE INTO ops (callsign, granted_at, granted_by) VALUES (?, ?, ?)")
+    .run(callsign, Date.now(), grantedBy);
+  return r.changes > 0;
+}
+
+export function dbRevokeOp(callsign: string): boolean {
+  return db.prepare("DELETE FROM ops WHERE callsign = ?").run(callsign).changes > 0;
+}
+
+export function dbOpsCount(): number {
+  return (db.prepare("SELECT COUNT(*) AS c FROM ops").get() as { c: number }).c;
 }
