@@ -165,11 +165,23 @@ function httpSink(res: ServerResponse): PollSink {
  *
  * Returns true if the poll was settled immediately (nothing is left in pendingPolls).
  */
-function startPoll(userName: string, sink: PollSink, cursor: number | undefined, windowMs: number): boolean {
+function startPoll(
+  userName: string,
+  sink: PollSink,
+  cursor: number | undefined,
+  windowMs: number,
+  transport: "http" | "hosted",
+): boolean {
   removePoll(userName);
   lastSeen.set(userName, Date.now());
 
-  console.log(`[poll-start] ${userName} waiting for messages...`);
+  // The transport is in the log line on purpose. This function is the shared body of the HTTP
+  // long-poll AND the hub-hosted in-process wait, so an untagged "[poll-start]" cannot tell an
+  // observer which one it is — and during the JDESK cutover a recent [poll-start] was read as
+  // "a stdio process is still running for this name" when it was actually a hosted station doing
+  // a normal standby. That misread nearly had live hosted sessions hunted as stdio survivors.
+  // An acceptance artifact has to name what it saw.
+  console.log(`[poll-start${transport === "hosted" ? ":hosted" : ""}] ${userName} waiting for messages...`);
 
   const timer = setTimeout(() => {
     pendingPolls.delete(userName);
@@ -242,7 +254,7 @@ export function addPoll(
     }
   });
 
-  startPoll(userName, sink, cursor, windowMs);
+  startPoll(userName, sink, cursor, windowMs, "http");
 }
 
 /**
@@ -296,7 +308,7 @@ export function awaitPoll(
     };
     signal?.addEventListener("abort", abortListener, { once: true });
 
-    startPoll(userName, sink, cursor, windowMs);
+    startPoll(userName, sink, cursor, windowMs, "hosted");
   });
 }
 
