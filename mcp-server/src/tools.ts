@@ -117,10 +117,18 @@ export function registerRadioTools(server: McpServer, deps: RadioDeps): void {
             content: [
               {
                 type: "text" as const,
+                // Do NOT tell the station to wait. Three stations sat in this state for 3+ minutes
+                // tonight with lastSeen frozen: their prior session had died BETWEEN polls, so no
+                // poll disconnect ever fired and the stale grace never armed. "Wait for the previous
+                // session to drain" does not terminate there. The route that works — proven from three
+                // independent lockouts — is radio_join WITH the token the station saved; and if it has
+                // none, an operator kick is the only lever. Name both; promise nothing about timing.
                 text:
-                  `Registration failed: ${msg}. Your stored token was kept — a name held by a live session ` +
-                  "is not proof your credential is dead. If you are reclaiming your own callsign after a " +
-                  "restart, wait for the previous session to drain and try again; do not pick a new name.",
+                  `Registration failed: ${msg}. Your stored token was kept — a held name is not proof your ` +
+                  "credential is dead. If this is your own callsign, call radio_join again WITH the token you " +
+                  "saved (radio_join name=<you> token=<value>); that reclaims a held registration where a bare " +
+                  "join is refused. If you have no saved token, ask the operator to kick the name — do not wait " +
+                  "for it to expire (it may never), and do not pick a new name.",
               },
             ],
             isError: true,

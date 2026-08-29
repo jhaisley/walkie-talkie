@@ -290,6 +290,9 @@ describe("radio_standby", () => {
     expect(clear).not.toHaveBeenCalled();
     expect(text(res)).toContain("stored token was kept");
     expect(text(res)).toContain("do not pick a new name");
+    // It must name the route that actually works and must NOT promise a drain that may never come.
+    expect(text(res)).toContain("WITH the token you saved");
+    expect(text(res)).not.toContain("wait for the previous session");
   });
 
   it("clears the session and the stored token when the hub says the registration expired", async () => {
