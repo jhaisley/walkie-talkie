@@ -555,6 +555,20 @@ const handleKickAlias: RouteHandler = async (req, res) => {
   else sendError(res, 404, `User "${body.name}" not found`);
 };
 
+/** /admin-channel-invite — add a station to a channel from the dashboard (station-side /channel-invite needs a station token). */
+const handleAdminChannelInvite: RouteHandler = async (req, res) => {
+  const body = JSON.parse(await readBody(req)) as { channel?: string; name?: string };
+  if (!body.channel || !body.name) return sendError(res, 400, "Missing 'channel' or 'name' field");
+  const ch = normalizeChannel(body.channel);
+  if (!channelExists(ch)) return sendError(res, 404, `Channel "${ch}" does not exist`);
+  if (!isUserRegistered(body.name)) return sendError(res, 404, `"${body.name}" is not registered`);
+  joinChannel(ch, body.name);
+  broadcast({ type: "channel_join", channel: ch, userName: body.name, timestamp: Date.now() });
+  routeMessage("system", `@${body.name}`, `You have been invited to ${ch} by the operator`, ch);
+  console.log(`[channel-invite] operator -> ${body.name} into ${ch}`);
+  sendJson(res, 200, { ok: true, channel: ch, invited: body.name });
+};
+
 /** /admin-channel-kick — remove one station from one channel. Moderation, not termination. */
 const handleAdminChannelKick: RouteHandler = async (req, res) => {
   const body = JSON.parse(await readBody(req)) as { channel?: string; name?: string };
@@ -1230,6 +1244,7 @@ const adminRoutes: Record<string, { method: string; handler: RouteHandler }> = {
   "/kick": { method: "POST", handler: handleKickAlias }, // deprecated alias for /kill
   "/kick-all": { method: "POST", handler: handleKickAll },
   "/admin-channel-kick": { method: "POST", handler: handleAdminChannelKick },
+  "/admin-channel-invite": { method: "POST", handler: handleAdminChannelInvite },
   "/op": { method: "POST", handler: handleOp },
   "/deop": { method: "POST", handler: handleDeop },
   "/whois": { method: "GET", handler: handleWhois },

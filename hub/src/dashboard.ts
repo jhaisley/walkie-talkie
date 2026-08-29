@@ -1737,9 +1737,102 @@ export function getDashboardHTML(
       return '<div class="msg-image"><img src="data:' + image.mimeType + ';base64,' + image.data + '" onclick="window.open(this.src)"></div>';
     }
 
+    // --- Operator slash commands -----------------------------------------------------------
+    // Typed into the send box; intercepted BEFORE anything is posted, so a mistyped command is
+    // never broadcast as a message. Output renders as a local system line, not hub traffic.
+    // NOTE: this file is a TS template literal. No backticks, no dollar-brace, no lone backslash.
+    function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function cmdOut(text, isErr) {
+      addMessage('<span class="time">' + formatTime(Date.now()) + '</span>' +
+        '<strong>' + (isErr ? "error" : "ok") + '</strong> ' + esc(text), "system", selectedChannel);
+    }
+    function adminPost(path, body) {
+      return fetch(path, { method: "POST", headers: adminHeaders, body: JSON.stringify(body) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    }
+    function adminGet(path) {
+      return fetch(path, { headers: { "Authorization": "Bearer " + ADMIN_TOKEN } })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
+    }
+    function fmtAge(ms) { return ms == null ? "never" : shortDuration(Date.now() - ms) + " ago"; }
+    const COMMANDS = {
+      help: function () {
+        cmdOut("/users  /channels  /whois <nick>  /invite <#chan> <nick>  /kick <#chan> <nick>  /kill <nick>  /op <nick>  /deop <nick>  /wall <text>");
+      },
+      users: function () {
+        return adminGet("/users").then(function (r) {
+          const rows = (r.j.users || []).slice().sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+          cmdOut(rows.length + " registered: " + rows.map(function (u) {
+            return u.name + (u.hasActivePoll ? " [polling]" : u.online ? " [online]" : " [offline]") + " " + fmtAge(u.lastSeen);
+          }).join(" | "));
+        });
+      },
+      channels: function () {
+        return adminGet("/channels").then(function (r) {
+          cmdOut((r.j.channels || []).map(function (c) { return c.name + " (" + c.memberCount + ")"; }).join("  "));
+        });
+      },
+      whois: function (a) {
+        if (!a[0]) return cmdOut("usage: /whois <nick>", true);
+        return adminGet("/whois?name=" + encodeURIComponent(a[0])).then(function (r) {
+          if (!r.ok) return cmdOut(r.j.error, true);
+          const w = r.j;
+          cmdOut(w.name + ": role=" + w.role + (w.op ? " OP" : "") + " online=" + w.online + " polling=" + w.hasActivePoll +
+            " lastSeen=" + fmtAge(w.lastSeen) + (w.unclaimed ? " UNCLAIMED(restart-restored, never re-auth'd)" : "") +
+            " channels=" + (w.channels || []).join(","));
+        });
+      },
+      invite: function (a) {
+        if (!a[0] || !a[1]) return cmdOut("usage: /invite <#channel> <nick>", true);
+        return adminPost("/admin-channel-invite", { channel: a[0], name: a[1] })
+          .then(function (r) { cmdOut(r.ok ? "invited " + a[1] + " to " + a[0] : r.j.error, !r.ok); });
+      },
+      kick: function (a) {
+        if (!a[0] || !a[1]) return cmdOut("usage: /kick <#channel> <nick>   (to remove a station entirely use /kill)", true);
+        return adminPost("/admin-channel-kick", { channel: a[0], name: a[1] })
+          .then(function (r) { cmdOut(r.ok ? "kicked " + a[1] + " from " + r.j.channel : r.j.error, !r.ok); });
+      },
+      kill: function (a) {
+        if (!a[0]) return cmdOut("usage: /kill <nick>", true);
+        if (!confirm("Kill " + a[0] + "? This terminates its registration and session.")) return;
+        return adminPost("/kill", { name: a[0] }).then(function (r) { cmdOut(r.ok ? "killed " + a[0] : r.j.error, !r.ok); });
+      },
+      op: function (a) {
+        if (!a[0]) return cmdOut("usage: /op <nick>", true);
+        return adminPost("/op", { name: a[0] }).then(function (r) {
+          cmdOut(r.ok ? (r.j.changed ? a[0] + " is now an operator" : a[0] + " was already an operator") : r.j.error, !r.ok);
+        });
+      },
+      deop: function (a) {
+        if (!a[0]) return cmdOut("usage: /deop <nick>", true);
+        return adminPost("/deop", { name: a[0] }).then(function (r) {
+          cmdOut(r.ok ? (r.j.changed ? a[0] + " is no longer an operator" : a[0] + " was not an operator") : r.j.error, !r.ok);
+        });
+      },
+      wall: function (a, rest) {
+        if (!rest) return cmdOut("usage: /wall <text>", true);
+        return adminPost("/wall", { channel: selectedChannel, issuer: "operator", content: rest })
+          .then(function (r) { cmdOut(r.ok ? "wall sent to " + r.j.recipients + " recipient(s)" : r.j.error, !r.ok); });
+      },
+    };
+    function runCommand(line) {
+      const parts = line.slice(1).trim().split(/s+/);
+      const name = (parts.shift() || "").toLowerCase();
+      const rest = line.slice(1).trim().slice(name.length).trim();
+      const fn = COMMANDS[name];
+      if (!fn) { cmdOut("unknown command /" + name + " — try /help", true); return; }
+      Promise.resolve(fn(parts, rest)).catch(function (e) { cmdOut(String(e), true); });
+    }
+
     function sendMessage() {
       const content = sendInputEl.value.trim();
       if (!content && !pendingImage) return;
+      if (content.charAt(0) === "/" && !pendingImage) {
+        runCommand(content);
+        sendInputEl.value = "";
+        sendInputEl.style.height = "auto";
+        return;
+      }
       const channel = selectedChannel;
       const target = recipientTarget;
       const payload = { to: target, content, channel };
